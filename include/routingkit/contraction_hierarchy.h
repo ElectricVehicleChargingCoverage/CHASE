@@ -113,6 +113,8 @@ public:
 	ContractionHierarchyQuery&add_target(unsigned t, unsigned dist_to_t = 0);
 
 	ContractionHierarchyQuery&run();
+	ContractionHierarchy&phase1();
+	ContractionHierarchy&phase2();
 
 	unsigned get_used_source();
 	unsigned get_used_target();
@@ -206,6 +208,7 @@ public:
 	std::vector<unsigned>forward_tentative_distance, backward_tentative_distance;
 	std::vector<unsigned>forward_predecessor_node, backward_predecessor_node;
 	std::vector<unsigned>forward_predecessor_arc, backward_predecessor_arc;
+	std::vector<unsigned>S, T;
 	unsigned shortest_path_meeting_node;
 	unsigned many_to_many_source_or_target_count;
 

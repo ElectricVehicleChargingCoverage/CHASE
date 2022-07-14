@@ -1442,7 +1442,8 @@ ContractionHierarchyQuery&ContractionHierarchyQuery::reset(){
 	forward_queue.clear();
 	was_backward_pushed.reset_all();
 	backward_queue.clear();
-
+	S.clear();
+	T.clear();
 	shortest_path_meeting_node = invalid_id;
 
 	state = ContractionHierarchyQuery::InternalState::initialized;
@@ -1558,10 +1559,11 @@ namespace{
 		TimestampFlags&was_forward_pushed, const TimestampFlags&was_backward_pushed,
 		MinIDQueue&forward_queue,
 		std::vector<unsigned>&forward_tentative_distance, const std::vector<unsigned>&backward_tentative_distance,
-		std::vector<unsigned>&forward_predecessor_node, std::vector<unsigned>&forward_predecessor_arc
+		std::vector<unsigned>&forward_predecessor_node, std::vector<unsigned>&forward_predecessor_arc,
+		std::vector<unsgined>& core_entries,
+		bool stall=true;
+		int min_rank = 0;
 	){
-
-
 		auto p = forward_queue.pop();
 		auto popped_node = p.id;
 		auto distance_to_popped_node = p.key;
@@ -1573,13 +1575,13 @@ namespace{
 			}
 		}
 
-		if(
+		if(popped_node > min_rank && (!stall ||
 			!forward_can_stall_at_node(
 				popped_node,
 				backward_first_out, backward_head, backward_weight,
 				was_forward_pushed,
 				forward_tentative_distance, backward_tentative_distance
-			)
+			))
 		)
 			forward_expand_upward_ch_arcs_of_node(
 				popped_node, distance_to_popped_node,
@@ -1617,10 +1619,76 @@ namespace{
 			);
 		}
 	}
+}
 
+ContractionHierarchyQuery& ContractionHierarchyQuery::phase1(int min_rank){
+	assert(ch && "query object must have an attached CH");
+	assert(!forward_queue.empty() && "must add at least one source before calling run");
+	assert(!backward_queue.empty() && "must add at least one target before calling run");
+	assert(state == ContractionHierarchyQuery::InternalState::initialized);
 
+	unsigned shortest_path_length = inf_weight;
+	shortest_path_meeting_node = invalid_id;
 
+	bool forward_next = true;
 
+	for(;;){
+		bool forward_finished = false;
+		if(forward_queue.empty())
+			forward_finished = true;
+		else if(forward_queue.peek().key >= shortest_path_length)
+			forward_finished = true;
+
+		bool backward_finished = false;
+		if(backward_queue.empty())
+			backward_finished = true;
+		else if(backward_queue.peek().key >= shortest_path_length)
+			backward_finished = true;
+
+		if(forward_finished && backward_finished)
+			break;
+
+		if(forward_finished)
+			forward_next = false;
+		if(backward_finished)
+			forward_next = true;
+
+		if(forward_next){
+			forward_settle_node(
+				shortest_path_length, shortest_path_meeting_node,
+				ch->forward.first_out, ch->forward.head, ch->forward.weight,
+				ch->backward.first_out, ch->backward.head, ch->backward.weight,
+				was_forward_pushed, was_backward_pushed,
+				forward_queue,
+				forward_tentative_distance, backward_tentative_distance,
+				forward_predecessor_node, forward_predecessor_arc,
+				S,
+				false,
+				min_rank
+			);
+			forward_next = false;
+		} else {
+			forward_settle_node(
+				shortest_path_length, shortest_path_meeting_node,
+				ch->backward.first_out, ch->backward.head, ch->backward.weight,
+				ch->forward.first_out, ch->forward.head, ch->forward.weight,
+				was_backward_pushed, was_forward_pushed,
+				backward_queue,
+				backward_tentative_distance, forward_tentative_distance,
+				backward_predecessor_node, backward_predecessor_arc,
+				T,
+				false,
+				min_rank
+			);
+			forward_next = true;
+		}
+	}
+
+	state = ContractionHierarchyQuery::InternalState::run;
+	if (!((S.empty() && T.empty()) || (S.size() == 1 && T.size() == 1 && S[0] == T[0]))){
+
+	}
+	return *this;
 }
 
 ContractionHierarchyQuery& ContractionHierarchyQuery::run(){
@@ -1663,7 +1731,8 @@ ContractionHierarchyQuery& ContractionHierarchyQuery::run(){
 				was_forward_pushed, was_backward_pushed,
 				forward_queue,
 				forward_tentative_distance, backward_tentative_distance,
-				forward_predecessor_node, forward_predecessor_arc
+				forward_predecessor_node, forward_predecessor_arc,
+				S
 			);
 			forward_next = false;
 		} else {
@@ -1674,7 +1743,8 @@ ContractionHierarchyQuery& ContractionHierarchyQuery::run(){
 				was_backward_pushed, was_forward_pushed,
 				backward_queue,
 				backward_tentative_distance, forward_tentative_distance,
-				backward_predecessor_node, backward_predecessor_arc
+				backward_predecessor_node, backward_predecessor_arc,
+				T
 			);
 			forward_next = true;
 		}

@@ -15,6 +15,7 @@ target_link_directories(CHASE PUBLIC lib)
 # link library needed for the vertex parsing
 target_link_libraries(CHASE pthread)
 target_link_libraries(CHASE routingkit)
+target_link_libraries(CHASE metis)
 target_link_libraries(CHASE boost_filesystem)
 target_link_libraries(CHASE boost_program_options)
 
