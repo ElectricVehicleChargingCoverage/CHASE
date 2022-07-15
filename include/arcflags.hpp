@@ -19,14 +19,17 @@ public:
     };
     string name;
 	Side forward, backward;
+    vector<float> latitude, longitude;
+    vector<int> order;
     vector<bool> boundary_nodes;
     int node_count() { return count; };
 };
 
 class ArcFlags {
     Graph& g;
+    vector<int> partition;
 public:
-    ArcFlags(Graph& _g): g{_g} {};
+    ArcFlags(Graph& _g, vector<int>& _partition): g{_g}, partition{_partition} {};
     void precompute(int start=0, int end=PARTITION_SIZE);
 };
 
@@ -40,7 +43,7 @@ void ArcFlags::precompute(int start, int end) {
         return a.second > b.second;
     };
     auto markEdgesOnSptTo = [&](int src, int cell_idx) {
-        vector<int> d(g.node_count(), numeric_limits<int>::max());
+        vector<double> d(g.node_count(), numeric_limits<double>::max());
         vector<int> p(g.node_count(), -1);
         vector<bool> visited(g.node_count(), false);
         priority_queue<QueueElement, vector<QueueElement>, decltype(cmp)> q(cmp);
@@ -69,7 +72,7 @@ void ArcFlags::precompute(int start, int end) {
     };
 
     auto markEdgesOnSptFrom = [&](int src, int cell_idx) {
-        vector<int> d(g.node_count(), numeric_limits<int>::max());
+        vector<double> d(g.node_count(), numeric_limits<double>::max());
         vector<int> p(g.node_count(), -1);
         vector<bool> visited(g.node_count(), false);
         priority_queue<QueueElement, vector<QueueElement>, decltype(cmp)> q(cmp);

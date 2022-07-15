@@ -2,6 +2,19 @@
     "files.associations": {
         "iostream": "cpp",
         "ostream": "cpp",
-        "iosfwd": "cpp"
+        "iosfwd": "cpp",
+        "*.tcc": "cpp",
+        "deque": "cpp",
+        "forward_list": "cpp",
+        "list": "cpp",
+        "string": "cpp",
+        "unordered_map": "cpp",
+        "unordered_set": "cpp",
+        "vector": "cpp",
+        "any": "cpp",
+        "system_error": "cpp"
+    },
+    "cmake.debugConfig": {
+        "args": ["-g", "../data/berlin-latest.osm.pbf", "-c", "0.8", "-p", "10"]
     }
 }
