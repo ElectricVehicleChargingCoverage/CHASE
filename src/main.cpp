@@ -1,30 +1,37 @@
 #include <bits/stdc++.h>
-#include <boost/filesystem.hpp>
-#include <boost/program_options.hpp>
-#include <routingkit/osm_simple.h>
 #include <routingkit/contraction_hierarchy.h>
 #include <routingkit/inverse_vector.h>
+#include <routingkit/osm_simple.h>
+#include <scotch.h>
+
 #include <arcflags.hpp>
-#include <metis.h>
-#include "kaHIP_interface.h"
+#include <boost/filesystem.hpp>
+#include <boost/program_options.hpp>
+// #include <metis.h>
+// #include "kaHIP_interface.h"
 
 using namespace RoutingKit;
 using namespace std;
 
 vector<vector<int>> ccList;
 
+using QueueElement = pair<int, double>;
+auto cmp = [](QueueElement& a, QueueElement& b) {
+    return a.second > b.second;
+};
 
 SimpleOSMCarRoutingGraph removeSmallCCs(SimpleOSMCarRoutingGraph& graph, int minSize) {
     cout << "Graph size before cleanup: ";
     cout << graph.node_count() << " nodes, " << graph.arc_count() << " edges" << endl;
     vector<bool> deleted(graph.node_count(), false);
     for (auto cc : ccList)
-        if (cc.size() < minSize) for (int node : cc) deleted[node] = true;
+        if (cc.size() < minSize)
+            for (int node : cc) deleted[node] = true;
 
     vector<vector<pair<int, int>>> adj(graph.node_count());
     for (int x = 0; x < graph.node_count(); ++x) {
         if (deleted[x]) continue;
-        for (int arc = graph.first_out[x]; arc < graph.first_out[x+1]; ++arc) {
+        for (int arc = graph.first_out[x]; arc < graph.first_out[x + 1]; ++arc) {
             int y = graph.head[arc];
             if (deleted[y]) continue;
             adj[x].push_back(make_pair(y, graph.travel_time[arc]));
@@ -49,19 +56,6 @@ SimpleOSMCarRoutingGraph removeSmallCCs(SimpleOSMCarRoutingGraph& graph, int min
         }
     }
     cleaned.first_out.push_back(cleaned.head.size());
- 
-    ofstream out("graph2.csv");
-    out << "from_lat,from_lng,to_lat,to_lng" << endl;
-    for (int x = 0; x < cleaned.node_count(); ++x) {
-        int d = 0;
-        for (int arc = cleaned.first_out[x]; arc < cleaned.first_out[x+1]; ++arc) {
-            int y = cleaned.head[arc];
-            out << cleaned.latitude[x] << "," << cleaned.longitude[x] << "," << cleaned.latitude[y] << "," << cleaned.longitude[y] << endl;
-            d++;
-        }
-        assert(d <= 7);
-    }
-    out.close();
 
     cout << "Graph size after cleanup: ";
     cout << cleaned.node_count() << " nodes, " << cleaned.arc_count() << " edges" << endl;
@@ -70,12 +64,12 @@ SimpleOSMCarRoutingGraph removeSmallCCs(SimpleOSMCarRoutingGraph& graph, int min
 
 void bfs(SimpleOSMCarRoutingGraph& graph, int src, vector<bool>& visited, int comp) {
     visited[src] = true;
-    queue<int> q{ {{src}} };
+    queue<int> q{{{src}}};
     while (!q.empty()) {
         auto v = q.front();
         ccList[comp].push_back(v);
         q.pop();
-        for (int arc = graph.first_out[v]; arc < graph.first_out[v+1]; ++arc) {
+        for (int arc = graph.first_out[v]; arc < graph.first_out[v + 1]; ++arc) {
             int y = graph.head[arc];
             if (visited[y]) continue;
             visited[y] = true;
@@ -107,20 +101,20 @@ int findCCs(SimpleOSMCarRoutingGraph& graph) {
     return sizes[0];
 }
 
-Graph build_ch_complete_graph(string name, SimpleOSMCarRoutingGraph& graph, ContractionHierarchy& ch, float best_percentage){
+Graph build_ch_complete_graph(string name, SimpleOSMCarRoutingGraph& graph, ContractionHierarchy& ch, float best_percentage) {
     vector<vector<pair<int, int>>> adj(ch.node_count());
     vector<vector<pair<int, int>>> back_adj(ch.node_count());
     assert(ch.forward.first_out.size() == ch.backward.first_out.size());
 
-    for (int x = 0; x < ch.node_count(); ++x ){
-        if (x < ch.node_count() * (1-best_percentage)) continue;
-        for (int arc = ch.forward.first_out[x]; arc < ch.forward.first_out[x+1]; ++arc) {
+    for (int x = 0; x < ch.node_count(); ++x) {
+        if (x < ch.node_count() * (1 - best_percentage)) continue;
+        for (int arc = ch.forward.first_out[x]; arc < ch.forward.first_out[x + 1]; ++arc) {
             int y = ch.forward.head[arc];
             if (y < ch.node_count() * (1 - best_percentage)) continue;
             adj[x].push_back(make_pair(y, ch.forward.weight[arc]));
             back_adj[y].push_back(make_pair(x, ch.forward.weight[arc]));
         }
-        for (int arc = ch.backward.first_out[x]; arc < ch.backward.first_out[x+1]; ++arc) {
+        for (int arc = ch.backward.first_out[x]; arc < ch.backward.first_out[x + 1]; ++arc) {
             int y = ch.backward.head[arc];
             if (y < ch.node_count() * (1 - best_percentage)) continue;
             adj[y].push_back(make_pair(x, ch.backward.weight[arc]));
@@ -130,77 +124,123 @@ Graph build_ch_complete_graph(string name, SimpleOSMCarRoutingGraph& graph, Cont
     unordered_map<int, int> id_map;
     vector<int> nodes;
     for (int x = 0, count = 0; x < graph.node_count(); ++x) {
-        if (x < ch.node_count() * (1-best_percentage)) continue;
+        if (x < ch.node_count() * (1 - best_percentage)) continue;
         id_map[x] = count;
         count++;
         nodes.push_back(x);
     }
     Graph g = Graph(nodes.size(), name);
     for (int x : nodes) {
+        g.new_id[x] = g.forward.first_out.size();
         g.forward.first_out.push_back(g.forward.head.size());
         g.backward.first_out.push_back(g.backward.head.size());
-        g.latitude.push_back(graph.latitude[x]);
-        g.longitude.push_back(graph.longitude[x]);
+        g.latitude.push_back(graph.latitude[ch.order[x]]);
+        g.longitude.push_back(graph.longitude[ch.order[x]]);
         g.order.push_back(ch.order[x]);
         for (auto& pair : adj[x]) {
-            int y = pair.first; int w = pair.second;
+            int y = pair.first;
+            int w = pair.second;
             g.forward.head.push_back(id_map[y]);
             g.forward.weight.push_back(w);
         }
         for (auto& pair : back_adj[x]) {
-            int y = pair.first; int w = pair.second;
+            int y = pair.first;
+            int w = pair.second;
             g.backward.head.push_back(id_map[y]);
             g.backward.weight.push_back(w);
         }
     }
-    assert(g.order.size() == g.node_count());
-    cout << g.node_count() << ", " << ch.node_count() << " -> " << (double)g.node_count() / (double)ch.node_count() << endl;
     g.forward.first_out.push_back(g.forward.head.size());
     g.backward.first_out.push_back(g.backward.head.size());
     return g;
 }
 
-vector<idx_t> paritition_graph(SimpleOSMCarRoutingGraph& graph, ContractionHierarchy& ch, Graph& g, idx_t nparts) {
-    vector<int> xadj = g.forward.first_out;
-    vector<int> adjncy = g.forward.head;
+void build_up_down_cores(Graph& g) {
+    for (int x = 0; x < g.node_count(); ++x) {
+        g.forward_up.first_out.push_back(g.forward_up.head.size());
+        g.forward_down.first_out.push_back(g.forward_down.head.size());
+        g.backward_up.first_out.push_back(g.backward_up.head.size());
+        g.backward_down.first_out.push_back(g.backward_down.head.size());
+        for (int arc = g.forward.first_out[x]; arc < g.forward.first_out[x + 1]; ++arc) {
+            int y = g.forward.head[arc];
+            if (x < y) {
+                g.forward_up.head.push_back(y);
+                g.forward_up.weight.push_back(g.forward.weight[arc]);
+            } else {
+                g.forward_down.head.push_back(y);
+                g.forward_down.weight.push_back(g.forward.weight[arc]);
+            }
+        }
+        for (int arc = g.backward.first_out[x]; arc < g.backward.first_out[x + 1]; ++arc) {
+            int y = g.backward.head[arc];
+            if (x < y) {
+                g.backward_up.head.push_back(y);
+                g.backward_up.weight.push_back(g.forward.weight[arc]);
+            } else {
+                g.backward_down.head.push_back(y);
+                g.backward_down.weight.push_back(g.backward.weight[arc]);
+            }
+        }
+    }
+    g.forward_up.first_out.push_back(g.forward_up.head.size());
+    g.backward_up.first_out.push_back(g.backward_up.head.size());
+    g.forward_down.first_out.push_back(g.forward_down.head.size());
+    g.backward_down.first_out.push_back(g.backward_down.head.size());
+}
 
-    cout << xadj.size() << endl;
-    cout <<adjncy.size() << endl;
+vector<int> partition_graph(SimpleOSMCarRoutingGraph& graph, ContractionHierarchy& ch, Graph& g, int nparts, float best_percentage) {
+    int n = g.node_count();
 
-    // idx_t options[METIS_NOPTIONS];
-    // METIS_SetDefaultOptions(options);
-    // options[METIS_OPTION_NUMBERING] = 0;
+    vector<SCOTCH_Num> xadj;
+    vector<SCOTCH_Num> adjncy;
+    for (int x = 0; x < g.node_count(); ++x) {
+        xadj.push_back(adjncy.size());
+        vector<bool> is_set(g.node_count(), false);
+        // shortcut edges
+        for (int arc = g.forward.first_out[x]; arc < g.forward.first_out[x + 1]; ++arc) {
+            int y = g.forward.head[arc];
+            if (is_set[y] || y == x) continue;
+            adjncy.push_back(y);
+            is_set[y] = true;
+        }
+        for (int arc = g.backward.first_out[x]; arc < g.backward.first_out[x + 1]; ++arc) {
+            int y = g.backward.head[arc];
+            if (is_set[y] || y == x) continue;
+            adjncy.push_back(y);
+            is_set[y] = true;
+        }
+    }
+    xadj.push_back(adjncy.size());
 
-    int edgecut = 0;
-    int ncon = 1;
-    int n = xadj.size()-1;
-    double imbalance = 0.03;
-    vector<int> partitions;
-    partitions.resize(n);
+    SCOTCH_Graph grafdat;
+    SCOTCH_Strat stradat;
+    SCOTCH_Num baseval;
+    SCOTCH_Num vertnbr;
+    int o;
 
-    cout << "start partitioning" << endl;
-    kaffpa(&n, NULL, &(xadj[0]), NULL, &(adjncy[0]), &nparts, &imbalance, false, 0, ECO, &edgecut, &(partitions[0]));
-    // auto ios = METIS_PartGraphRecursive(&n, &ncon, &(xadj[0]), &(adjncy[0]), NULL, NULL, NULL, &nparts, NULL, NULL, options, &edgecut, &(partitions[0]));
-    // auto ios = METIS_PartGraphKway(&n, &ncon, &(xadj[0]), &(adjncy[0]), NULL, NULL, NULL, &nparts, NULL, NULL, options, &edgecut, &(partitions[0]));
-    // cout << "finished partitioning into "<< nparts << " parts" << endl;
-    // if (ios != METIS_OK) {
-    //     cout << "METIS failed with error: " << ios << endl;
-    // }else {
-    //     cout << "METIS succeeded" << endl;
-    // }
-
-    return partitions;
+    SCOTCH_graphInit(&grafdat);
+    baseval = 0;
+    vertnbr = n;
+    o = 1;
+    vector<SCOTCH_Num> part(n);
+    if (SCOTCH_graphBuild(&grafdat, baseval, vertnbr, &(xadj[0]), &(xadj[1]), NULL, NULL, adjncy.size(), &(adjncy[0]), NULL) == 0) {
+        SCOTCH_stratInit(&stradat);
+        if (SCOTCH_graphCheck(&grafdat) == 0) {
+            o = SCOTCH_graphPart(&grafdat, nparts, &stradat, &(part[0]));
+        }
+        SCOTCH_stratExit(&stradat);
+    }
+    SCOTCH_graphExit(&grafdat);
+    vector<int> partition(n);
+    for (int i = 0; i < n; ++i) partition[i] = part[i];
+    return partition;
 }
 
 int main(int argc, const char* argv[]) {
     try {
         namespace po = boost::program_options;
         po::options_description description("ParkPlacement");
-        description.add_options()
-            ("help,h", "Display this help message")
-            ("graph,g", po::value<string>(), "Graph pbf file")
-            ("core,c", po::value<float>()->default_value(1.0), "Number in [0,1] describing the core size")
-            ("partition,p", po::value<int>()->default_value(100), "Partition size");
+        description.add_options()("help,h", "Display this help message")("graph,g", po::value<string>(), "Graph pbf file")("core,c", po::value<float>()->default_value(1.0), "Number in [0,1] describing the core size")("partition,p", po::value<int>()->default_value(100), "Partition size");
         po::variables_map vm;
         po::store(po::command_line_parser(argc, argv).options(description).run(), vm);
         po::notify(vm);
@@ -218,35 +258,29 @@ int main(int argc, const char* argv[]) {
         auto graph = simple_load_osm_car_routing_graph_from_pbf(pbf_file);
         graph = removeSmallCCs(graph, findCCs(graph));
         cout << "graph loaded!" << endl;
+        cout << "start contracting graph" << endl;
+
         auto tail = invert_inverse_vector(graph.first_out);
 
         // Build the shortest path index
         cout << "start building contraction hierarchy" << endl;
         string ch_save = pbf_file + ".ch";
-        auto ch = boost::filesystem::exists(ch_save)? ContractionHierarchy::load_file(ch_save) : ContractionHierarchy::build(
-            graph.node_count(), 
-            tail, graph.head, 
-            graph.travel_time,
-            [](string msg) { std::cout << msg << endl; }
-        );
+        auto ch = boost::filesystem::exists(ch_save) ? ContractionHierarchy::load_file(ch_save) : ContractionHierarchy::build(graph.node_count(), tail, graph.head, graph.travel_time, [](string msg) { std::cout << msg << endl; });
         if (!boost::filesystem::exists(ch_save)) ch.save_file(ch_save);
         cout << "contraction hierarchy finished!" << endl;
 
         float core = max(0.0f, min(1.0f, vm["core"].as<float>()));
-        Graph g = build_ch_complete_graph("test", graph, ch, core);
+        Graph g = build_ch_complete_graph("ch_core", graph, ch, core);
+        build_up_down_cores(g);
+
         cout << "ch search graph build" << endl;
 
-        auto partition = paritition_graph(graph, ch, g, vm["partition"].as<int>());
-        ofstream out("nodes.csv");
-        out << "lat,lng,cell" << endl;
-        for (int x = 0; x < ch.node_count(); ++x) {
-            out << graph.latitude[x] << "," << graph.longitude[x] << "," << partition[x] << endl;
-        }
-        out.close();
-        // // ArcFlags arcflags = ArcFlags(g);
+        cout << "start partition: " << g.node_count() << " nodes, " << g.forward.head.size() << " edges" << endl;
+        auto partition = partition_graph(graph, ch, g, vm["partition"].as<int>(), core);
+        g.compute_boundary_node(partition);
+        ArcFlags arcflags = ArcFlags(g, partition, vm["partition"].as<int>());
+        arcflags.precompute(0, vm["partition"].as<int>());
 
-        // // ContractionHierarchyQuery ch_query(ch);
-        
     } catch (const exception& ex) {
         cerr << ex.what() << endl;
     }
