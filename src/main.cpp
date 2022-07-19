@@ -3,12 +3,10 @@
 #include <routingkit/inverse_vector.h>
 #include <routingkit/osm_simple.h>
 #include <scotch.h>
-
 #include <arcflags.hpp>
 #include <boost/filesystem.hpp>
 #include <boost/program_options.hpp>
-// #include <metis.h>
-// #include "kaHIP_interface.h"
+#include "stringutil.hpp"
 
 using namespace RoutingKit;
 using namespace std;
@@ -20,9 +18,53 @@ auto cmp = [](QueueElement& a, QueueElement& b) {
     return a.second > b.second;
 };
 
-SimpleOSMCarRoutingGraph removeSmallCCs(SimpleOSMCarRoutingGraph& graph, int minSize) {
+Graph loadGraph(string path) {
+    ifstream file(path);
+    string line;
+    unordered_map<long long, pair<double, double>> nodes;
+    unordered_map<long long, vector<pair<long long, int>>> adj;
+    getline(file, line); // skip first line
+    while (getline(file, line)) {
+        vector<string> csv = split(line, ",", false);
+        int cost = stod(csv[5]) * 3600.0;
+        int reverse_cost = stod(csv[6]) * 3600.0;
+        long long source_id = stoll(csv[1]);
+        long long target_id = stoll(csv[2]);
+        double from_lng = stod(csv[7]); double from_lat = stod(csv[8]);
+        double to_lng = stod(csv[9]); double to_lat = stod(csv[10]);
+        nodes[source_id] = make_pair(from_lat, from_lng);
+        nodes[target_id] = make_pair(to_lat, to_lng);
+        if (source_id != target_id) {
+            adj[source_id].push_back(make_pair(target_id, cost));
+            if(stod(csv[6]) < 1000000.0)
+                adj[target_id].push_back(make_pair(source_id, reverse_cost));
+        }
+    }
+    vector<long long> n;
+    unordered_map<long long, int> new_id;
+    for (auto& [from, latlng] : nodes) {
+        new_id[from] = n.size();
+        n.push_back(from);
+    }
+    Graph g(nodes.size(), path);
+    for (int i = 0; i < n.size(); ++i) {
+        long long from = n[i]; 
+        auto latlng = nodes[from];
+        g.forward.first_out.push_back(g.forward.head.size());
+        g.latitude.push_back(latlng.first);
+        g.longitude.push_back(latlng.second);
+        for (auto& [to, cost] : adj[from]) {
+            g.forward.head.push_back(new_id[to]);
+            g.forward.weight.push_back(cost);
+        }
+    }
+    g.forward.first_out.push_back(g.forward.head.size());
+    return g;
+}
+
+Graph removeSmallCCs(Graph& graph, int minSize) {
     cout << "Graph size before cleanup: ";
-    cout << graph.node_count() << " nodes, " << graph.arc_count() << " edges" << endl;
+    cout << graph.node_count() << " nodes, " << graph.forward.head.size() << " edges" << endl;
     vector<bool> deleted(graph.node_count(), false);
     for (auto cc : ccList)
         if (cc.size() < minSize)
@@ -31,10 +73,10 @@ SimpleOSMCarRoutingGraph removeSmallCCs(SimpleOSMCarRoutingGraph& graph, int min
     vector<vector<pair<int, int>>> adj(graph.node_count());
     for (int x = 0; x < graph.node_count(); ++x) {
         if (deleted[x]) continue;
-        for (int arc = graph.first_out[x]; arc < graph.first_out[x + 1]; ++arc) {
-            int y = graph.head[arc];
+        for (int arc = graph.forward.first_out[x]; arc < graph.forward.first_out[x + 1]; ++arc) {
+            int y = graph.forward.head[arc];
             if (deleted[y]) continue;
-            adj[x].push_back(make_pair(y, graph.travel_time[arc]));
+            adj[x].push_back(make_pair(y, graph.forward.weight[arc]));
         }
     }
     unordered_map<int, int> id_map;
@@ -45,32 +87,32 @@ SimpleOSMCarRoutingGraph removeSmallCCs(SimpleOSMCarRoutingGraph& graph, int min
         count++;
         nodes.push_back(x);
     }
-    SimpleOSMCarRoutingGraph cleaned = SimpleOSMCarRoutingGraph();
+    Graph cleaned = Graph(nodes.size(), graph.name);
     for (int x : nodes) {
-        cleaned.first_out.push_back(cleaned.head.size());
+        cleaned.forward.first_out.push_back(cleaned.forward.head.size());
         cleaned.latitude.push_back(graph.latitude[x]);
         cleaned.longitude.push_back(graph.longitude[x]);
         for (auto pair : adj[x]) {
-            cleaned.head.push_back(id_map[pair.first]);
-            cleaned.travel_time.push_back(pair.second);
+            cleaned.forward.head.push_back(id_map[pair.first]);
+            cleaned.forward.weight.push_back(pair.second);
         }
     }
-    cleaned.first_out.push_back(cleaned.head.size());
+    cleaned.forward.first_out.push_back(cleaned.forward.head.size());
 
     cout << "Graph size after cleanup: ";
-    cout << cleaned.node_count() << " nodes, " << cleaned.arc_count() << " edges" << endl;
+    cout << cleaned.node_count() << " nodes, " << cleaned.forward.head.size() << " edges" << endl;
     return cleaned;
 }
 
-void bfs(SimpleOSMCarRoutingGraph& graph, int src, vector<bool>& visited, int comp) {
+void bfs(Graph& graph, int src, vector<bool>& visited, int comp) {
     visited[src] = true;
     queue<int> q{{{src}}};
     while (!q.empty()) {
         auto v = q.front();
         ccList[comp].push_back(v);
         q.pop();
-        for (int arc = graph.first_out[v]; arc < graph.first_out[v + 1]; ++arc) {
-            int y = graph.head[arc];
+        for (int arc = graph.forward.first_out[v]; arc < graph.forward.first_out[v + 1]; ++arc) {
+            int y = graph.forward.head[arc];
             if (visited[y]) continue;
             visited[y] = true;
             q.push(y);
@@ -78,7 +120,7 @@ void bfs(SimpleOSMCarRoutingGraph& graph, int src, vector<bool>& visited, int co
     }
 }
 
-int findCCs(SimpleOSMCarRoutingGraph& graph) {
+int findCCs(Graph& graph) {
     vector<bool> visited(graph.node_count(), false);
     int scc = 0;
     cout << "start cc search" << endl;
@@ -101,9 +143,15 @@ int findCCs(SimpleOSMCarRoutingGraph& graph) {
     return sizes[0];
 }
 
-Graph build_ch_complete_graph(string name, SimpleOSMCarRoutingGraph& graph, ContractionHierarchy& ch, float best_percentage) {
-    vector<vector<pair<int, int>>> adj(ch.node_count());
-    vector<vector<pair<int, int>>> back_adj(ch.node_count());
+Graph build_ch_complete_graph(string name, Graph& graph, ContractionHierarchy& ch, float best_percentage) {
+    struct Info {
+        Info(unsigned _y, unsigned _arc, unsigned _weight): y{_y}, arc{_arc}, weight{_weight} {}
+        unsigned y;
+        unsigned arc;
+        unsigned weight;
+    };
+    vector<vector<Info>> adj(ch.node_count());
+    vector<vector<Info>> back_adj(ch.node_count());
     assert(ch.forward.first_out.size() == ch.backward.first_out.size());
 
     for (int x = 0; x < ch.node_count(); ++x) {
@@ -111,14 +159,14 @@ Graph build_ch_complete_graph(string name, SimpleOSMCarRoutingGraph& graph, Cont
         for (int arc = ch.forward.first_out[x]; arc < ch.forward.first_out[x + 1]; ++arc) {
             int y = ch.forward.head[arc];
             if (y < ch.node_count() * (1 - best_percentage)) continue;
-            adj[x].push_back(make_pair(y, ch.forward.weight[arc]));
-            back_adj[y].push_back(make_pair(x, ch.forward.weight[arc]));
+            adj[x].push_back(Info(y, arc, ch.forward.weight[arc]));
+            back_adj[y].push_back(Info(x, arc, ch.forward.weight[arc]));
         }
         for (int arc = ch.backward.first_out[x]; arc < ch.backward.first_out[x + 1]; ++arc) {
             int y = ch.backward.head[arc];
             if (y < ch.node_count() * (1 - best_percentage)) continue;
-            adj[y].push_back(make_pair(x, ch.backward.weight[arc]));
-            back_adj[x].push_back(make_pair(y, ch.backward.weight[arc]));
+            adj[y].push_back(Info(x, arc, ch.backward.weight[arc]));
+            back_adj[x].push_back(Info(y, arc, ch.backward.weight[arc]));
         }
     }
     unordered_map<int, int> id_map;
@@ -137,17 +185,15 @@ Graph build_ch_complete_graph(string name, SimpleOSMCarRoutingGraph& graph, Cont
         g.latitude.push_back(graph.latitude[ch.order[x]]);
         g.longitude.push_back(graph.longitude[ch.order[x]]);
         g.order.push_back(ch.order[x]);
-        for (auto& pair : adj[x]) {
-            int y = pair.first;
-            int w = pair.second;
-            g.forward.head.push_back(id_map[y]);
-            g.forward.weight.push_back(w);
+        for (auto& info : adj[x]) {
+            g.forward.head.push_back(id_map[info.y]);
+            g.forward.weight.push_back(info.weight);
+            g.forward.original_arc.push_back(info.arc);
         }
-        for (auto& pair : back_adj[x]) {
-            int y = pair.first;
-            int w = pair.second;
-            g.backward.head.push_back(id_map[y]);
-            g.backward.weight.push_back(w);
+        for (auto& info : back_adj[x]) {
+            g.backward.head.push_back(id_map[info.y]);
+            g.backward.weight.push_back(info.weight);
+            g.backward.original_arc.push_back(info.arc);
         }
     }
     g.forward.first_out.push_back(g.forward.head.size());
@@ -166,9 +212,11 @@ void build_up_down_cores(Graph& g) {
             if (x < y) {
                 g.forward_up.head.push_back(y);
                 g.forward_up.weight.push_back(g.forward.weight[arc]);
+                g.forward_up.original_arc.push_back(g.forward.original_arc[arc]);
             } else {
                 g.forward_down.head.push_back(y);
                 g.forward_down.weight.push_back(g.forward.weight[arc]);
+                g.forward_down.original_arc.push_back(g.forward.original_arc[arc]);
             }
         }
         for (int arc = g.backward.first_out[x]; arc < g.backward.first_out[x + 1]; ++arc) {
@@ -176,9 +224,11 @@ void build_up_down_cores(Graph& g) {
             if (x < y) {
                 g.backward_up.head.push_back(y);
                 g.backward_up.weight.push_back(g.forward.weight[arc]);
+                g.backward_up.original_arc.push_back(g.backward.original_arc[arc]);
             } else {
                 g.backward_down.head.push_back(y);
                 g.backward_down.weight.push_back(g.backward.weight[arc]);
+                g.backward_down.original_arc.push_back(g.backward.original_arc[arc]);
             }
         }
     }
@@ -188,7 +238,7 @@ void build_up_down_cores(Graph& g) {
     g.backward_down.first_out.push_back(g.backward_down.head.size());
 }
 
-vector<int> partition_graph(SimpleOSMCarRoutingGraph& graph, ContractionHierarchy& ch, Graph& g, int nparts, float best_percentage) {
+vector<int> partition_graph(Graph& g, int nparts, float best_percentage) {
     int n = g.node_count();
 
     vector<SCOTCH_Num> xadj;
@@ -252,34 +302,44 @@ int main(int argc, const char* argv[]) {
             cout << "please provide an input graph!" << endl;
             return 0;
         }
+
         string pbf_file = vm["graph"].as<string>();
 
         cout << "start loading graph" << endl;
-        auto graph = simple_load_osm_car_routing_graph_from_pbf(pbf_file);
+        auto graph = loadGraph(pbf_file + "/edges.csv"); //simple_load_osm_car_routing_graph_from_pbf(pbf_file);
+
         graph = removeSmallCCs(graph, findCCs(graph));
         cout << "graph loaded!" << endl;
         cout << "start contracting graph" << endl;
 
-        auto tail = invert_inverse_vector(graph.first_out);
+        auto tail = invert_inverse_vector(graph.forward.first_out);
 
         // Build the shortest path index
         cout << "start building contraction hierarchy" << endl;
         string ch_save = pbf_file + ".ch";
-        auto ch = boost::filesystem::exists(ch_save) ? ContractionHierarchy::load_file(ch_save) : ContractionHierarchy::build(graph.node_count(), tail, graph.head, graph.travel_time, [](string msg) { std::cout << msg << endl; });
+        auto ch = boost::filesystem::exists(ch_save) ? ContractionHierarchy::load_file(ch_save) : ContractionHierarchy::build(
+            graph.node_count(), 
+            tail, 
+            graph.forward.head, 
+            graph.forward.weight, 
+            [](string msg) { std::cout << msg << endl; 
+        });
         if (!boost::filesystem::exists(ch_save)) ch.save_file(ch_save);
         cout << "contraction hierarchy finished!" << endl;
 
         float core = max(0.0f, min(1.0f, vm["core"].as<float>()));
-        Graph g = build_ch_complete_graph("ch_core", graph, ch, core);
+
+        vector<string> csv = split(pbf_file, "/", false);
+        string name = csv.back() + "_core_" + to_string(core);
+        Graph g = build_ch_complete_graph(name, graph, ch, core);
         build_up_down_cores(g);
 
         cout << "ch search graph build" << endl;
 
         cout << "start partition: " << g.node_count() << " nodes, " << g.forward.head.size() << " edges" << endl;
-        auto partition = partition_graph(graph, ch, g, vm["partition"].as<int>(), core);
+        auto partition = partition_graph(g, vm["partition"].as<int>(), core);
         g.compute_boundary_node(partition);
-        ArcFlags arcflags = ArcFlags(g, partition, vm["partition"].as<int>());
-        arcflags.precompute(0, vm["partition"].as<int>());
+
 
     } catch (const exception& ex) {
         cerr << ex.what() << endl;

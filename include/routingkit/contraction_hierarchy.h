@@ -113,8 +113,7 @@ public:
 	ContractionHierarchyQuery&add_target(unsigned t, unsigned dist_to_t = 0);
 
 	ContractionHierarchyQuery&run();
-	ContractionHierarchy&phase1();
-	ContractionHierarchy&phase2();
+	ContractionHierarchyQuery&run_chase(float core=1);
 
 	unsigned get_used_source();
 	unsigned get_used_target();

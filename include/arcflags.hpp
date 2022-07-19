@@ -11,9 +11,10 @@ private:
 public:
     Graph(int _count, string _name=""): count{_count}, name{_name} {}
     struct Side{
-        vector<int>first_out;
-        vector<int>head;
-        vector<int>weight;
+        vector<unsigned>first_out;
+        vector<unsigned>head;
+        vector<unsigned>weight;
+        vector<unsigned>original_arc;
     };
     string name;
 	Side forward, backward;
@@ -43,6 +44,11 @@ public:
     int partition_size;
     ArcFlags(Graph& _g, vector<int>& _partition, int _partition_size): g{_g}, partition{_partition}, partition_size{_partition_size} {};
     void precompute(int start, int end);
+    void mergeFlags(string folder);
+    void compress(unordered_map<int, boost::dynamic_bitset<>>& labels);
+    unordered_map<size_t, boost::dynamic_bitset<>> preprocessing_labels;
+    unordered_map<int, size_t> preprocessing_label_hash;
+    bool precomputed = false;
 };
 
 void ArcFlags::precompute(int start, int end) {
@@ -68,7 +74,7 @@ void ArcFlags::precompute(int start, int end) {
             if (visited[v])
                 continue;
             visited[v] = true;
-            if (p[v]) {
+            if (p[v] != -1) {
                 cell_maps_arc_flags[cell_idx][p[v]] = true; 
             }
             if (v == src || !down[v]){
@@ -77,7 +83,7 @@ void ArcFlags::precompute(int start, int end) {
                     if (visited[u]) continue;
                     if (d[v] + g.backward_up.weight[arc] < d[u]) {
                         d[u] = d[v] + g.backward_up.weight[arc];
-                        p[u] = arc;
+                        p[u] = g.backward_up.original_arc[arc];
                         down[u] = false;
                         q.push({u, d[u]});
                     }
@@ -88,7 +94,7 @@ void ArcFlags::precompute(int start, int end) {
                 if (visited[u]) continue;
                 if (d[v] + g.backward_down.weight[arc] < d[u]) {
                     d[u] = d[v] + g.backward_down.weight[arc];
-                    p[u] = arc;
+                    p[u] = g.backward_down.original_arc[arc];
                     down[u] = true;
                     q.push({u, d[u]});
                 }
@@ -110,8 +116,8 @@ void ArcFlags::precompute(int start, int end) {
             if (visited[v])
                 continue;
             visited[v] = true;
-            if (p[v]) {
-                cell_maps_arc_flags[cell_idx + partition_size][p[v]] = true; 
+            if (p[v] != -1) {
+                cell_maps_arc_flags[cell_idx + partition_size][down[v]? -p[v] : p[v]] = true; 
             }
             if (v == src || !down[v]){
                 for (int arc = g.forward_up.first_out[v]; arc < g.forward_up.first_out[v+1]; ++arc) {
@@ -119,7 +125,7 @@ void ArcFlags::precompute(int start, int end) {
                     if (visited[u]) continue;
                     if (d[v] + g.forward_up.weight[arc] < d[u]) {
                         d[u] = d[v] + g.forward_up.weight[arc];
-                        p[u] = arc;
+                        p[u] = g.forward_up.original_arc[arc];
                         down[u] = false;
                         q.push({u, d[u]});
                     }
@@ -130,7 +136,7 @@ void ArcFlags::precompute(int start, int end) {
                 if (visited[u]) continue;
                 if (d[v] + g.forward_down.weight[arc] < d[u]) {
                     d[u] = d[v] + g.forward_down.weight[arc];
-                    p[u] = arc;
+                    p[u] = g.forward_down.original_arc[arc];
                     down[u] = true;
                     q.push({u, d[u]});
                 }
@@ -148,6 +154,7 @@ void ArcFlags::precompute(int start, int end) {
     auto precomputeCell = [&](int cell_idx) {
         sync_out.println("Start computation for cell ", cell_idx);
         for (int x = 0; x < g.node_count(); ++x) {
+            cout << "cell: " << cell_idx << " x: " << x << "/" << g.node_count()-1 << endl;
             if (g.boundary_nodes[x]){
                 markEdgesOnSptTo(x, cell_idx);
                 markEdgesOnSptFrom(x, cell_idx);
@@ -178,4 +185,38 @@ void ArcFlags::precompute(int start, int end) {
         this_thread::sleep_for(std::chrono::milliseconds(5000));
     }
     pool.wait_for_tasks();
+    precomputed = true;
+}
+
+void ArcFlags::mergeFlags(string folder) {
+    unordered_map<int, boost::dynamic_bitset<>> labels;
+    for (int i = 0; i < 2*partition_size; i++) {
+        cout << "merge cell " << i << endl;
+        string file_name = "../flags/" + g.name + "_" + to_string(partition_size) + "_" + to_string(i);
+        ifstream file(file_name);
+        string line;
+        while (getline(file, line)) {
+            int arc = stoi(line);
+            if (labels.find(arc) == labels.end()) labels[arc].resize(2*partition_size, 0);
+            labels[arc][i] = 1;
+        }
+    }
+    cout << "Start compressing" << endl;
+    compress(labels);
+    cout << "Start exporting" << endl;
+    // exportFlags(folder);
+    cout << "Finished exporting" << endl;
+    precomputed = true;
+}
+
+void ArcFlags::compress(unordered_map<int, boost::dynamic_bitset<>>& labels) {
+    hash<boost::dynamic_bitset<>> hash_f;
+    for (auto& [edge, label] : labels) {
+        size_t key = hash_f(label);
+        if (preprocessing_labels.find(key) != preprocessing_labels.end()) {
+            if (label != preprocessing_labels[key])
+                cout << "Hash collision!" << endl;
+        } else preprocessing_labels[key] = label;
+        preprocessing_label_hash[edge] = key;
+    }
 }

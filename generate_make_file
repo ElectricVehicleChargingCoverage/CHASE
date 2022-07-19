@@ -24,7 +24,7 @@ import sys
 def uniquify(l):
 	return sorted(list(set(l)))
 
-if not os.path.exists("src"):
+if not os.path.exists("src/routingkit"):
 	print("No src/ subdirectory found => no source code found => nothing to do")
 	sys.exit(1)
 
@@ -35,7 +35,7 @@ def does_cpp_file_contains_main(file_name):
 				return True
 		return False
 
-src_files = [os.path.join("src",x) for x in os.listdir("src") if os.path.isfile(os.path.join("src", x))]
+src_files = [os.path.join("src/routingkit",x) for x in os.listdir("src/routingkit") if os.path.isfile(os.path.join("src/routingkit", x))]
 cpp_files = [x for x in src_files if os.path.splitext(x)[1] == ".cpp"]
 h_files = [x for x in src_files if os.path.splitext(x)[1] == ".h"]
 bin_files = [os.path.join("bin", os.path.splitext(os.path.basename(x))[0]) for x in src_files if does_cpp_file_contains_main(x)]
@@ -59,7 +59,7 @@ def uncached_extract_direct_includes_from_source_file(file_name):
 		for line in f:
 			m = re.search(r"^\s*#\s*include\s*\"(.*)\"\s*$", line)
 			if m:
-				local_header = os.path.join("src", m.group(1))
+				local_header = os.path.join("src/routingkit", m.group(1))
 				if not local_header in h_files:
 					print("\""+file_name+"\" includes inexistent header \""+local_header+"\" => abort")
 					sys.exit(1)
@@ -139,14 +139,14 @@ def generate_direct_cpp_dependencies():
 				x = os.path.normpath(h).split(os.path.sep)
 				if len(x) == 3:
 					x = x[2]
-					x = os.path.join("src", os.path.splitext(x)[0]+".cpp")
+					x = os.path.join("src/routingkit", os.path.splitext(x)[0]+".cpp")
 					if x in cpp_files and x != cpp_file:
 						depends.append(x)
 
 		direct_cpp_dependency[cpp_file] = depends
 
 	for bin_file in bin_files:
-		direct_cpp_dependency[bin_file] = [os.path.join("src", os.path.basename(bin_file)+".cpp")]
+		direct_cpp_dependency[bin_file] = [os.path.join("src/routingkit", os.path.basename(bin_file)+".cpp")]
 
 	for lib_file in lib_list:
 		depends = []
@@ -156,7 +156,7 @@ def generate_direct_cpp_dependencies():
 					x = os.path.normpath(include).split(os.path.sep)
 					if len(x) == 3:
 						x = x[2]
-						x = os.path.join("src", os.path.splitext(x)[0]+".cpp")
+						x = os.path.join("src/routingkit", os.path.splitext(x)[0]+".cpp")
 						if x in cpp_files:
 							depends.append(x)
 
