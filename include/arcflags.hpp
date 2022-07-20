@@ -2,6 +2,7 @@
 #include <bits/stdc++.h>
 #include <thread_pool.hpp>
 #include <boost/dynamic_bitset.hpp>
+#include "stringutil.hpp"
 
 using namespace std;
 
@@ -46,8 +47,12 @@ public:
     void precompute(int start, int end);
     void mergeFlags(string folder);
     void compress(unordered_map<int, boost::dynamic_bitset<>>& labels);
+    void exportFlags(string folder);
+    void importFlags(string edges_path, string flags_path);
     unordered_map<size_t, boost::dynamic_bitset<>> preprocessing_labels;
     unordered_map<int, size_t> preprocessing_label_hash;
+    unordered_map<int, size_t> label_hashes;
+    unordered_map<size_t, boost::dynamic_bitset<>> labels;
     bool precomputed = false;
 };
 
@@ -204,8 +209,85 @@ void ArcFlags::mergeFlags(string folder) {
     cout << "Start compressing" << endl;
     compress(labels);
     cout << "Start exporting" << endl;
-    // exportFlags(folder);
+    exportFlags(folder);
     cout << "Finished exporting" << endl;
+    precomputed = true;
+}
+
+void ArcFlags::exportFlags(string folder) {
+    ofstream file("../flags/" + g.name + "_" + to_string(partition_size) + ".csv");
+    file << "edge_id,key\n";
+    for (auto& [edge, key] : preprocessing_label_hash) {
+        file << edge << "," << key << "\n";
+    }
+    file.close();
+
+    vector<byte> bytes;
+    for (auto& [_key, label] : preprocessing_labels) {
+        long long key = _key;
+        boost::dynamic_bitset<> flag = label;
+        bitset<64> key_bits(key_bits);
+        vector<byte> keyBytes;
+        for (int i = 0; i < sizeof(size_t); i++) {
+            byte nextByte{ static_cast<int>(key & ((1 << 8) - 1)) };
+            keyBytes.push_back(nextByte);
+            key >>= 8;
+        }
+        for (int i = 0; i < keyBytes.size(); i++)
+            bytes.push_back(keyBytes[keyBytes.size() - 1 - i]);
+
+        vector<byte> flagBytes;
+        for (int i = 0; i < 2*partition_size; i += 8) {
+            boost::dynamic_bitset<> copy = flag;
+            copy &= boost::dynamic_bitset<>(2*partition_size, 255);
+            byte nextByte{ static_cast<int>(copy.to_ulong()) };
+            flagBytes.push_back(nextByte);
+            flag >>= 8;
+        }
+        for (int i = 0; i < flagBytes.size(); i++)
+            bytes.push_back(flagBytes[flagBytes.size() - 1 - i]);
+    }
+    ofstream outfile("../flags/" + g.name + "_" + to_string(partition_size) + ".bin", ios::out | ios::binary);
+    outfile.write((const char*)&bytes[0], bytes.size());
+}
+
+void ArcFlags::importFlags(string edges_path, string flags_path) {
+    ifstream input(flags_path, ios::binary);
+    vector<unsigned char> buffer(istreambuf_iterator<char>(input), {});
+    int rowByteSize = sizeof(size_t) + ceil(2*partition_size / 8.0);
+
+    bitset<64> keyBits;
+    boost::dynamic_bitset<> flag(2*partition_size);
+    size_t key;
+    for (int i = 0; i < buffer.size(); i++) {
+        int pos = i % rowByteSize;
+        if (pos == 0) {
+            keyBits = bitset<64>{ 0 };
+            flag = boost::dynamic_bitset<>(2*partition_size, 0);
+        }
+        if (pos < 8) { // read key
+            bitset<64> mask{ buffer[i] };
+            keyBits |= mask;
+            if (pos == 7) {
+                key = keyBits.to_ulong();
+            } else keyBits <<= 8;
+        } else { // read flag
+            flag |= boost::dynamic_bitset<>(2*partition_size, buffer[i]);
+            if (pos < rowByteSize - 1) {
+                flag <<= 8;
+            } else labels[key] = flag;
+        }
+    }
+    ifstream file(edges_path);
+    string line;
+    getline(file, line); // skip first line
+    vector<string> lines;
+    while (getline(file, line)) {
+        vector<string> csv = split(line, ",", false);
+        int edge_id = stoi(csv[0]);
+        size_t key = stoul(csv[1]);
+        label_hashes[edge_id] = key;
+    }
     precomputed = true;
 }
 

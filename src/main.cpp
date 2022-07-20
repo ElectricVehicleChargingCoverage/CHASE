@@ -6,7 +6,6 @@
 #include <arcflags.hpp>
 #include <boost/filesystem.hpp>
 #include <boost/program_options.hpp>
-#include "stringutil.hpp"
 
 using namespace RoutingKit;
 using namespace std;
@@ -165,8 +164,8 @@ Graph build_ch_complete_graph(string name, Graph& graph, ContractionHierarchy& c
         for (int arc = ch.backward.first_out[x]; arc < ch.backward.first_out[x + 1]; ++arc) {
             int y = ch.backward.head[arc];
             if (y < ch.node_count() * (1 - best_percentage)) continue;
-            adj[y].push_back(Info(x, arc, ch.backward.weight[arc]));
-            back_adj[x].push_back(Info(y, arc, ch.backward.weight[arc]));
+            adj[y].push_back(Info(x, -arc, ch.backward.weight[arc]));
+            back_adj[x].push_back(Info(y, -arc, ch.backward.weight[arc]));
         }
     }
     unordered_map<int, int> id_map;
@@ -335,11 +334,21 @@ int main(int argc, const char* argv[]) {
         build_up_down_cores(g);
 
         cout << "ch search graph build" << endl;
-
+        
         cout << "start partition: " << g.node_count() << " nodes, " << g.forward.head.size() << " edges" << endl;
         auto partition = partition_graph(g, vm["partition"].as<int>(), core);
         g.compute_boundary_node(partition);
+        ofstream out("partition.txt");
+        for (int i = 0; i < partition.size(); ++i) {
+            out << partition[i] << endl;
+        }
+        out.close();
+        ArcFlags flags(g, partition, vm["partition"].as<int>());
+        // flags.precompute(0, vm["partition"].as<int>());
 
+        ContractionHierarchyQuery query(ch);
+        query.edge_hashes = flags.label_hashes;
+        query.hash_flags = flags.labels;
 
     } catch (const exception& ex) {
         cerr << ex.what() << endl;

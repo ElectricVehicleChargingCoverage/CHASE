@@ -6,6 +6,9 @@
 #include <routingkit/bit_vector.h>
 #include <routingkit/permutation.h>
 
+#include <boost/dynamic_bitset.hpp>
+
+#include <unordered_map>
 #include <vector>
 #include <string>
 #include <functional>
@@ -113,7 +116,7 @@ public:
 	ContractionHierarchyQuery&add_target(unsigned t, unsigned dist_to_t = 0);
 
 	ContractionHierarchyQuery&run();
-	ContractionHierarchyQuery&run_chase(float core=1);
+	ContractionHierarchyQuery&run_chase(float core);
 
 	unsigned get_used_source();
 	unsigned get_used_target();
@@ -208,8 +211,13 @@ public:
 	std::vector<unsigned>forward_predecessor_node, backward_predecessor_node;
 	std::vector<unsigned>forward_predecessor_arc, backward_predecessor_arc;
 	std::vector<unsigned>S, T;
+	std::set<int> C_S, C_T; 
 	unsigned shortest_path_meeting_node;
 	unsigned many_to_many_source_or_target_count;
+
+	std::vector<int> partition;
+	std::unordered_map<int, size_t> edge_hashes;
+	std::unordered_map<size_t, boost::dynamic_bitset<>> hash_flags;
 
 	enum class InternalState:unsigned{
 		initialized,
