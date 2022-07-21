@@ -2,9 +2,12 @@
 #include <bits/stdc++.h>
 #include <thread_pool.hpp>
 #include <boost/dynamic_bitset.hpp>
+#include <routingkit/id_queue.h>
+#include <routingkit/timestamp_flag.h>
 #include "stringutil.hpp"
 
 using namespace std;
+using namespace RoutingKit;
 
 struct Graph {
 private:
@@ -15,7 +18,7 @@ public:
         vector<unsigned>first_out;
         vector<unsigned>head;
         vector<unsigned>weight;
-        vector<unsigned>original_arc;
+        vector<long long>original_arc;
     };
     string name;
 	Side forward, backward;
@@ -46,12 +49,12 @@ public:
     ArcFlags(Graph& _g, vector<int>& _partition, int _partition_size): g{_g}, partition{_partition}, partition_size{_partition_size} {};
     void precompute(int start, int end);
     void mergeFlags(string folder);
-    void compress(unordered_map<int, boost::dynamic_bitset<>>& labels);
+    void compress(unordered_map<long long, boost::dynamic_bitset<>>& labels);
     void exportFlags(string folder);
     void importFlags(string edges_path, string flags_path);
     unordered_map<size_t, boost::dynamic_bitset<>> preprocessing_labels;
-    unordered_map<int, size_t> preprocessing_label_hash;
-    unordered_map<int, size_t> label_hashes;
+    unordered_map<long long, size_t> preprocessing_label_hash;
+    unordered_map<long long, size_t> label_hashes;
     unordered_map<size_t, boost::dynamic_bitset<>> labels;
     bool precomputed = false;
 };
@@ -59,97 +62,127 @@ public:
 void ArcFlags::precompute(int start, int end) {
     thread_pool pool; // amount of threads
     synced_stream sync_out;
-    unordered_map<int, bool> cell_maps_arc_flags[2 * partition_size];
+    unordered_map<long long, bool> cell_maps_arc_flags[2 * partition_size];
 
     using QueueElement = pair<int, double>;
     auto cmp = [](QueueElement &a, QueueElement &b) {
         return a.second > b.second;
     };
-    auto markEdgesOnSptTo = [&](int src, int cell_idx) {
-        vector<double> d(g.node_count(), numeric_limits<double>::max());
+    auto markEdgesOnSptTo = [&](unsigned src, int cell_idx) {
+        vector<unsigned> tentative_dist(g.node_count(), inf_weight);
         vector<bool> down(g.node_count(), false);
-        vector<int> p(g.node_count(), -1);
-        vector<bool> visited(g.node_count(), false);
-        priority_queue<QueueElement, vector<QueueElement>, decltype(cmp)> q(cmp);
-        q.push({src, 0});
-        d[src] = 0;
-        while (!q.empty()) {
-            int v = q.top().first;
-            q.pop();
-            if (visited[v])
-                continue;
-            visited[v] = true;
-            if (p[v] != -1) {
-                cell_maps_arc_flags[cell_idx][p[v]] = true; 
+        vector<int> pred(g.node_count(), -1);
+
+        MinIDQueue queue(g.node_count());
+        TimestampFlags was_pushed(g.node_count());
+        queue.push({src, 0});
+
+        while (!queue.empty()) {
+            auto popped = queue.pop();
+            int v = popped.id;
+            auto distance_to_popped_node = popped.key;
+            if (pred[v] != -1) {
+                cell_maps_arc_flags[cell_idx][pred[v]] = true; 
             }
             if (v == src || !down[v]){
                 for (int arc = g.backward_up.first_out[v]; arc < g.backward_up.first_out[v+1]; ++arc) {
-                    int u = g.backward_up.head[arc];
-                    if (visited[u]) continue;
-                    if (d[v] + g.backward_up.weight[arc] < d[u]) {
-                        d[u] = d[v] + g.backward_up.weight[arc];
-                        p[u] = g.backward_up.original_arc[arc];
+                    unsigned u = g.backward_up.head[arc]; 
+                    int d = distance_to_popped_node + g.backward_up.weight[arc];
+                    if(was_pushed.is_set(u)){
+                        if (d < tentative_dist[u]) {
+                            tentative_dist[u] = distance_to_popped_node + g.backward_up.weight[arc];
+                            pred[u] = g.backward_up.original_arc[arc];
+                            down[u] = false;
+                            queue.decrease_key({u, tentative_dist[u]});
+                        }
+                    }else if(d < inf_weight){
+                        tentative_dist[u] = distance_to_popped_node + g.backward_up.weight[arc];
+                        pred[u] = g.backward_up.original_arc[arc];
                         down[u] = false;
-                        q.push({u, d[u]});
+                        was_pushed.set(u);
+                        queue.push({u, tentative_dist[u]});
                     }
                 }
             }
             for (int arc = g.backward_down.first_out[v]; arc < g.backward_down.first_out[v+1]; ++arc) {
-                int u = g.backward_down.head[arc];
-                if (visited[u]) continue;
-                if (d[v] + g.backward_down.weight[arc] < d[u]) {
-                    d[u] = d[v] + g.backward_down.weight[arc];
-                    p[u] = g.backward_down.original_arc[arc];
+                unsigned u = g.backward_down.head[arc];
+                int d = distance_to_popped_node + g.backward_down.weight[arc];
+                if(was_pushed.is_set(u)){
+                    if (d < tentative_dist[u]) {
+                        tentative_dist[u] = distance_to_popped_node + g.backward_down.weight[arc];
+                        pred[u] = g.backward_down.original_arc[arc];
+                        down[u] = true;
+                        queue.decrease_key({u, tentative_dist[u]});
+                    }
+                }else if(d < inf_weight){
+                    tentative_dist[u] = distance_to_popped_node + g.backward_down.weight[arc];
+                    pred[u] = g.backward_down.original_arc[arc];
                     down[u] = true;
-                    q.push({u, d[u]});
+                    was_pushed.set(u);
+                    queue.push({u, tentative_dist[u]});
                 }
             }
         }
     };
 
-    auto markEdgesOnSptFrom = [&](int src, int cell_idx) {
-        vector<double> d(g.node_count(), numeric_limits<double>::max());
-        vector<int> p(g.node_count(), -1);
+    auto markEdgesOnSptFrom = [&](unsigned src, int cell_idx) {
+        vector<unsigned> tentative_dist(g.node_count(), inf_weight);
         vector<bool> down(g.node_count(), false);
-        vector<bool> visited(g.node_count(), false);
-        priority_queue<QueueElement, vector<QueueElement>, decltype(cmp)> q(cmp);
-        q.push({src, 0});
-        d[src] = 0;
-        while (!q.empty()) {
-            int v = q.top().first;
-            q.pop();
-            if (visited[v])
-                continue;
-            visited[v] = true;
-            if (p[v] != -1) {
-                cell_maps_arc_flags[cell_idx + partition_size][down[v]? -p[v] : p[v]] = true; 
+        vector<int> pred(g.node_count(), -1);
+
+        MinIDQueue queue(g.node_count());
+        TimestampFlags was_pushed(g.node_count());
+        queue.push({src, 0});
+        
+        while (!queue.empty()) {
+            auto popped = queue.pop();
+            int v = popped.id;
+            auto distance_to_popped_node = popped.key;
+            if (pred[v] != -1) {
+                cell_maps_arc_flags[cell_idx + partition_size][pred[v]] = true; 
             }
             if (v == src || !down[v]){
                 for (int arc = g.forward_up.first_out[v]; arc < g.forward_up.first_out[v+1]; ++arc) {
-                    int u = g.forward_up.head[arc];
-                    if (visited[u]) continue;
-                    if (d[v] + g.forward_up.weight[arc] < d[u]) {
-                        d[u] = d[v] + g.forward_up.weight[arc];
-                        p[u] = g.forward_up.original_arc[arc];
+                    unsigned u = g.forward_up.head[arc]; 
+                    int d = distance_to_popped_node + g.forward_up.weight[arc];
+                    if(was_pushed.is_set(u)){
+                        if (d < tentative_dist[u]) {
+                            tentative_dist[u] = distance_to_popped_node + g.forward_up.weight[arc];
+                            pred[u] = g.forward_up.original_arc[arc];
+                            down[u] = false;
+                            queue.decrease_key({u, tentative_dist[u]});
+                        }
+                    }else if(d < inf_weight){
+                        tentative_dist[u] = distance_to_popped_node + g.forward_up.weight[arc];
+                        pred[u] = g.forward_up.original_arc[arc];
                         down[u] = false;
-                        q.push({u, d[u]});
+                        was_pushed.set(u);
+                        queue.push({u, tentative_dist[u]});
                     }
                 }
             }
             for (int arc = g.forward_down.first_out[v]; arc < g.forward_down.first_out[v+1]; ++arc) {
-                int u = g.forward_down.head[arc];
-                if (visited[u]) continue;
-                if (d[v] + g.forward_down.weight[arc] < d[u]) {
-                    d[u] = d[v] + g.forward_down.weight[arc];
-                    p[u] = g.forward_down.original_arc[arc];
+                unsigned u = g.forward_down.head[arc];
+                int d = distance_to_popped_node + g.forward_down.weight[arc];
+                if(was_pushed.is_set(u)){
+                    if (d < tentative_dist[u]) {
+                        tentative_dist[u] = distance_to_popped_node + g.forward_down.weight[arc];
+                        pred[u] = g.forward_down.original_arc[arc];
+                        down[u] = true;
+                        queue.decrease_key({u, tentative_dist[u]});
+                    }
+                }else if(d < inf_weight){
+                    tentative_dist[u] = distance_to_popped_node + g.forward_down.weight[arc];
+                    pred[u] = g.forward_down.original_arc[arc];
                     down[u] = true;
-                    q.push({u, d[u]});
+                    was_pushed.set(u);
+                    queue.push({u, tentative_dist[u]});
                 }
             }
         }
     };
 
-    auto saveFlags = [&](int cell_idx, const unordered_map<int, bool> &map) {
+    auto saveFlags = [&](int cell_idx, const unordered_map<long long, bool> &map) {
         ofstream out("../flags/" + g.name + "_" + to_string(partition_size) + "_" + to_string(cell_idx));
         for (auto [e, _] : map)
             if (_) out << e << endl;
@@ -159,7 +192,6 @@ void ArcFlags::precompute(int start, int end) {
     auto precomputeCell = [&](int cell_idx) {
         sync_out.println("Start computation for cell ", cell_idx);
         for (int x = 0; x < g.node_count(); ++x) {
-            cout << "cell: " << cell_idx << " x: " << x << "/" << g.node_count()-1 << endl;
             if (g.boundary_nodes[x]){
                 markEdgesOnSptTo(x, cell_idx);
                 markEdgesOnSptFrom(x, cell_idx);
@@ -194,14 +226,14 @@ void ArcFlags::precompute(int start, int end) {
 }
 
 void ArcFlags::mergeFlags(string folder) {
-    unordered_map<int, boost::dynamic_bitset<>> labels;
+    unordered_map<long long, boost::dynamic_bitset<>> labels;
     for (int i = 0; i < 2*partition_size; i++) {
         cout << "merge cell " << i << endl;
         string file_name = "../flags/" + g.name + "_" + to_string(partition_size) + "_" + to_string(i);
         ifstream file(file_name);
         string line;
         while (getline(file, line)) {
-            int arc = stoi(line);
+            long long arc = stoll(line);
             if (labels.find(arc) == labels.end()) labels[arc].resize(2*partition_size, 0);
             labels[arc][i] = 1;
         }
@@ -291,7 +323,7 @@ void ArcFlags::importFlags(string edges_path, string flags_path) {
     precomputed = true;
 }
 
-void ArcFlags::compress(unordered_map<int, boost::dynamic_bitset<>>& labels) {
+void ArcFlags::compress(unordered_map<long long, boost::dynamic_bitset<>>& labels) {
     hash<boost::dynamic_bitset<>> hash_f;
     for (auto& [edge, label] : labels) {
         size_t key = hash_f(label);

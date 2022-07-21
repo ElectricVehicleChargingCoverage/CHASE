@@ -25,8 +25,8 @@ Graph loadGraph(string path) {
     getline(file, line); // skip first line
     while (getline(file, line)) {
         vector<string> csv = split(line, ",", false);
-        int cost = stod(csv[5]) * 3600.0;
-        int reverse_cost = stod(csv[6]) * 3600.0;
+        int cost = stod(csv[5]) * 3600.0 * 1000;
+        int reverse_cost = stod(csv[6]) * 3600.0 * 1000;
         long long source_id = stoll(csv[1]);
         long long target_id = stoll(csv[2]);
         double from_lng = stod(csv[7]); double from_lat = stod(csv[8]);
@@ -146,7 +146,7 @@ Graph build_ch_complete_graph(string name, Graph& graph, ContractionHierarchy& c
     struct Info {
         Info(unsigned _y, unsigned _arc, unsigned _weight): y{_y}, arc{_arc}, weight{_weight} {}
         unsigned y;
-        unsigned arc;
+        long long arc;
         unsigned weight;
     };
     vector<vector<Info>> adj(ch.node_count());
@@ -344,11 +344,11 @@ int main(int argc, const char* argv[]) {
         }
         out.close();
         ArcFlags flags(g, partition, vm["partition"].as<int>());
-        // flags.precompute(0, vm["partition"].as<int>());
+        flags.precompute(0, vm["partition"].as<int>());
 
-        ContractionHierarchyQuery query(ch);
-        query.edge_hashes = flags.label_hashes;
-        query.hash_flags = flags.labels;
+        // ContractionHierarchyQuery query(ch);
+        // query.edge_hashes = flags.label_hashes;
+        // query.hash_flags = flags.labels;
 
     } catch (const exception& ex) {
         cerr << ex.what() << endl;

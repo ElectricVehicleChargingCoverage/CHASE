@@ -1533,6 +1533,7 @@ namespace{
 	}
 	template<class SetPred>
 	void forward_expand_upward_ch_arcs_of_node_chase(
+		bool forward,
 		unsigned node,
 		unsigned distance_to_node,
 		const std::vector<unsigned>&forward_first_out,
@@ -1551,7 +1552,7 @@ namespace{
 			bool skip = flags? true : false;
 			if (flags) {
 				for (int cell : core_cells)
-					if (hash_flags[edge_hashes[arc]][cell] == 1)
+					if (hash_flags[edge_hashes[forward? arc : -arc]][cell] == 1)
 						skip = false;
 			}
 			if (skip) continue;
@@ -1589,6 +1590,7 @@ namespace{
 
 
 	void forward_settle_node(
+		bool forward,
 		unsigned&shortest_path_length,
 		unsigned&shortest_path_meeting_node,
 		const std::vector<unsigned>&forward_first_out, const std::vector<unsigned>&forward_head, const std::vector<unsigned>&forward_weight,
@@ -1623,6 +1625,7 @@ namespace{
 			))
 		)
 			forward_expand_upward_ch_arcs_of_node_chase(
+				forward,
 				popped_node, distance_to_popped_node,
 				forward_first_out, forward_head, forward_weight,
 				was_forward_pushed, forward_queue,
@@ -1698,6 +1701,7 @@ ContractionHierarchyQuery& ContractionHierarchyQuery::run_chase(float core){
 
 			if(forward_next){
 				forward_settle_node(
+					true,
 					shortest_path_length, shortest_path_meeting_node,
 					ch->forward.first_out, ch->forward.head, ch->forward.weight,
 					ch->backward.first_out, ch->backward.head, ch->backward.weight,
@@ -1713,6 +1717,7 @@ ContractionHierarchyQuery& ContractionHierarchyQuery::run_chase(float core){
 				forward_next = false;
 			} else {
 				forward_settle_node(
+					false,
 					shortest_path_length, shortest_path_meeting_node,
 					ch->backward.first_out, ch->backward.head, ch->backward.weight,
 					ch->forward.first_out, ch->forward.head, ch->forward.weight,
@@ -1785,6 +1790,7 @@ ContractionHierarchyQuery& ContractionHierarchyQuery::run(){
 
 		if(forward_next){
 			forward_settle_node(
+				true,
 				shortest_path_length, shortest_path_meeting_node,
 				ch->forward.first_out, ch->forward.head, ch->forward.weight,
 				ch->backward.first_out, ch->backward.head, ch->backward.weight,
@@ -1798,6 +1804,7 @@ ContractionHierarchyQuery& ContractionHierarchyQuery::run(){
 			forward_next = false;
 		} else {
 			forward_settle_node(
+				false,
 				shortest_path_length, shortest_path_meeting_node,
 				ch->backward.first_out, ch->backward.head, ch->backward.weight,
 				ch->forward.first_out, ch->forward.head, ch->forward.weight,
