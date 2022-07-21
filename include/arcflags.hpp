@@ -87,39 +87,39 @@ void ArcFlags::precompute(int start, int end) {
             if (v == src || !down[v]){
                 for (int arc = g.backward_up.first_out[v]; arc < g.backward_up.first_out[v+1]; ++arc) {
                     unsigned u = g.backward_up.head[arc]; 
-                    int d = distance_to_popped_node + g.backward_up.weight[arc];
+                    unsigned d = distance_to_popped_node + g.backward_up.weight[arc];
                     if(was_pushed.is_set(u)){
                         if (d < tentative_dist[u]) {
-                            tentative_dist[u] = distance_to_popped_node + g.backward_up.weight[arc];
                             pred[u] = g.backward_up.original_arc[arc];
                             down[u] = false;
-                            queue.decrease_key({u, tentative_dist[u]});
+                            queue.decrease_key({u, d});
+                            tentative_dist[u] = d;
                         }
                     }else if(d < inf_weight){
-                        tentative_dist[u] = distance_to_popped_node + g.backward_up.weight[arc];
                         pred[u] = g.backward_up.original_arc[arc];
                         down[u] = false;
                         was_pushed.set(u);
-                        queue.push({u, tentative_dist[u]});
+                        queue.push({u, d});
+                        tentative_dist[u] = d;
                     }
                 }
             }
             for (int arc = g.backward_down.first_out[v]; arc < g.backward_down.first_out[v+1]; ++arc) {
                 unsigned u = g.backward_down.head[arc];
-                int d = distance_to_popped_node + g.backward_down.weight[arc];
+                unsigned d = distance_to_popped_node + g.backward_down.weight[arc];
                 if(was_pushed.is_set(u)){
                     if (d < tentative_dist[u]) {
-                        tentative_dist[u] = distance_to_popped_node + g.backward_down.weight[arc];
                         pred[u] = g.backward_down.original_arc[arc];
                         down[u] = true;
-                        queue.decrease_key({u, tentative_dist[u]});
+                        queue.decrease_key({u, d});
+                        tentative_dist[u] = d;
                     }
                 }else if(d < inf_weight){
-                    tentative_dist[u] = distance_to_popped_node + g.backward_down.weight[arc];
                     pred[u] = g.backward_down.original_arc[arc];
                     down[u] = true;
                     was_pushed.set(u);
-                    queue.push({u, tentative_dist[u]});
+                    tentative_dist[u] = d;
+                    queue.push({u, d});
                 }
             }
         }
@@ -144,39 +144,39 @@ void ArcFlags::precompute(int start, int end) {
             if (v == src || !down[v]){
                 for (int arc = g.forward_up.first_out[v]; arc < g.forward_up.first_out[v+1]; ++arc) {
                     unsigned u = g.forward_up.head[arc]; 
-                    int d = distance_to_popped_node + g.forward_up.weight[arc];
+                    unsigned d = distance_to_popped_node + g.forward_up.weight[arc];
                     if(was_pushed.is_set(u)){
                         if (d < tentative_dist[u]) {
-                            tentative_dist[u] = distance_to_popped_node + g.forward_up.weight[arc];
                             pred[u] = g.forward_up.original_arc[arc];
                             down[u] = false;
-                            queue.decrease_key({u, tentative_dist[u]});
+                            queue.decrease_key({u, d});
+                            tentative_dist[u] = d;
                         }
                     }else if(d < inf_weight){
-                        tentative_dist[u] = distance_to_popped_node + g.forward_up.weight[arc];
                         pred[u] = g.forward_up.original_arc[arc];
                         down[u] = false;
                         was_pushed.set(u);
-                        queue.push({u, tentative_dist[u]});
+                        queue.push({u, d});
+                        tentative_dist[u] = d;
                     }
                 }
             }
             for (int arc = g.forward_down.first_out[v]; arc < g.forward_down.first_out[v+1]; ++arc) {
                 unsigned u = g.forward_down.head[arc];
-                int d = distance_to_popped_node + g.forward_down.weight[arc];
+                unsigned d = distance_to_popped_node + g.forward_down.weight[arc];
                 if(was_pushed.is_set(u)){
                     if (d < tentative_dist[u]) {
-                        tentative_dist[u] = distance_to_popped_node + g.forward_down.weight[arc];
                         pred[u] = g.forward_down.original_arc[arc];
                         down[u] = true;
-                        queue.decrease_key({u, tentative_dist[u]});
+                        queue.decrease_key({u, d});
+                        tentative_dist[u] = d;
                     }
                 }else if(d < inf_weight){
-                    tentative_dist[u] = distance_to_popped_node + g.forward_down.weight[arc];
                     pred[u] = g.forward_down.original_arc[arc];
                     down[u] = true;
                     was_pushed.set(u);
-                    queue.push({u, tentative_dist[u]});
+                    queue.push({u, d});
+                    tentative_dist[u] = d;
                 }
             }
         }
