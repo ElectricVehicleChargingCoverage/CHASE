@@ -205,6 +205,8 @@ void ArcFlags::precompute(int start, int end) {
         }
         saveFlags(cell_idx, cell_maps_arc_flags[cell_idx]);
         saveFlags(cell_idx + partition_size, cell_maps_arc_flags[cell_idx + partition_size]);
+        cell_maps_arc_flags[cell_idx].clear();
+        cell_maps_arc_flags[cell_idx + partition_size].clear();
         sync_out.println("Finished cell ", cell_idx);
     };
 

@@ -347,6 +347,8 @@ int main(int argc, const char* argv[]) {
         flags.precompute(0, vm["partition"].as<int>());
 
         // ContractionHierarchyQuery query(ch);
+        //quey.partition = partition;
+        //query.partition_size = vm["partition"].as<int>();
         // query.edge_hashes = flags.label_hashes;
         // query.hash_flags = flags.labels;
 

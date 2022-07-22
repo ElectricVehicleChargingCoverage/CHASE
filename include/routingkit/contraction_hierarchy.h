@@ -216,6 +216,7 @@ public:
 	unsigned many_to_many_source_or_target_count;
 
 	std::vector<int> partition;
+	int partition_size;
 	std::unordered_map<int, size_t> edge_hashes;
 	std::unordered_map<size_t, boost::dynamic_bitset<>> hash_flags;
 

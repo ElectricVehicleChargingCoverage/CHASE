@@ -1546,13 +1546,14 @@ namespace{
 		const std::set<int> core_cells,
 		std::unordered_map<int, size_t> edge_hashes,
 	 	std::unordered_map<size_t, boost::dynamic_bitset<>> hash_flags,
-		bool flags = false
+		bool flags = false,
+		int partition_size = 0
 	){
 		for(unsigned arc = forward_first_out[node]; arc < forward_first_out[node+1]; ++arc){
 			bool skip = flags? true : false;
 			if (flags) {
 				for (int cell : core_cells)
-					if (hash_flags[edge_hashes[forward? arc : -arc]][cell] == 1)
+					if (hash_flags[edge_hashes[forward? arc : -arc]][forward? cell : cell + partition_size] == 1)
 						skip = false;
 			}
 			if (skip) continue;
@@ -1603,7 +1604,8 @@ namespace{
 		const std::unordered_map<int, size_t> edge_hashes, const std::unordered_map<size_t, boost::dynamic_bitset<>> hash_flags,
 		bool stall=true,
 		unsigned min_rank = 0,
-		bool flags = false
+		bool flags = false,
+		int partition_size = 0
 	){
 		auto p = forward_queue.pop();
 		auto popped_node = p.id;
@@ -1636,7 +1638,8 @@ namespace{
 				},
 				core_cells,
 				edge_hashes, hash_flags,
-				flags
+				flags,
+				partition_size
 			);
 	}
 
@@ -1712,7 +1715,9 @@ ContractionHierarchyQuery& ContractionHierarchyQuery::run_chase(float core){
 					S, C_S,
 					edge_hashes, hash_flags,
 					stall,
-					min_rank
+					min_rank,
+					flags,
+					partition_size
 				);
 				forward_next = false;
 			} else {
@@ -1728,7 +1733,9 @@ ContractionHierarchyQuery& ContractionHierarchyQuery::run_chase(float core){
 					T, C_T,
 					edge_hashes, hash_flags,
 					stall,
-					min_rank
+					min_rank,
+					flags,
+					partition_size
 				);
 				forward_next = true;
 			}
