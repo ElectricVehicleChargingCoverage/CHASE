@@ -197,10 +197,14 @@ void ArcFlags::precompute(int start, int end) {
                 markEdgesOnSptFrom(x, cell_idx);
             }
             for (int arc = g.forward.first_out[x]; arc < g.forward.first_out[x+1]; ++arc) {
-                cell_maps_arc_flags[cell_idx + partition_size][arc] = true;
+                int y = g.forward.head[arc];
+                if (partition[x] == partition[y])
+                    cell_maps_arc_flags[cell_idx + partition_size][g.forward.original_arc[arc]] = true;
             }
             for (int arc = g.backward.first_out[x]; arc < g.backward.first_out[x+1]; ++arc) {
-                cell_maps_arc_flags[cell_idx][arc] = true;
+                int y = g.backward.head[arc];
+                if (partition[x] == partition[y])
+                    cell_maps_arc_flags[cell_idx][g.backward.original_arc[arc]] = true;
             }
         }
         saveFlags(cell_idx, cell_maps_arc_flags[cell_idx]);
