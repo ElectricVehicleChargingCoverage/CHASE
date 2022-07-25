@@ -3,6 +3,7 @@
 #include <routingkit/inverse_vector.h>
 #include <routingkit/osm_simple.h>
 #include <scotch.h>
+
 #include <arcflags.hpp>
 #include <boost/filesystem.hpp>
 #include <boost/program_options.hpp>
@@ -22,21 +23,29 @@ Graph loadGraph(string path) {
     string line;
     unordered_map<long long, pair<double, double>> nodes;
     unordered_map<long long, vector<pair<long long, int>>> adj;
-    getline(file, line); // skip first line
+    unordered_map<long long, set<long long>> temp_adj_set;
+    getline(file, line);  // skip first line
     while (getline(file, line)) {
         vector<string> csv = split(line, ",", false);
         int cost = stod(csv[5]) * 3600.0 * 1000;
         int reverse_cost = stod(csv[6]) * 3600.0 * 1000;
         long long source_id = stoll(csv[1]);
         long long target_id = stoll(csv[2]);
-        double from_lng = stod(csv[7]); double from_lat = stod(csv[8]);
-        double to_lng = stod(csv[9]); double to_lat = stod(csv[10]);
+        double from_lng = stod(csv[7]);
+        double from_lat = stod(csv[8]);
+        double to_lng = stod(csv[9]);
+        double to_lat = stod(csv[10]);
         nodes[source_id] = make_pair(from_lat, from_lng);
         nodes[target_id] = make_pair(to_lat, to_lng);
         if (source_id != target_id) {
-            adj[source_id].push_back(make_pair(target_id, cost));
-            if(stod(csv[6]) < 1000000.0)
+            if (temp_adj_set[source_id].find(target_id) == temp_adj_set[source_id].end()) {
+                adj[source_id].push_back(make_pair(target_id, cost));
+                temp_adj_set[source_id].insert(target_id);
+            }
+            if (stod(csv[6]) < 1000000.0 && temp_adj_set[target_id].find(source_id) == temp_adj_set[target_id].end()) {
                 adj[target_id].push_back(make_pair(source_id, reverse_cost));
+                temp_adj_set[target_id].insert(source_id);
+            }
         }
     }
     vector<long long> n;
@@ -47,7 +56,7 @@ Graph loadGraph(string path) {
     }
     Graph g(nodes.size(), path);
     for (int i = 0; i < n.size(); ++i) {
-        long long from = n[i]; 
+        long long from = n[i];
         auto latlng = nodes[from];
         g.forward.first_out.push_back(g.forward.head.size());
         g.latitude.push_back(latlng.first);
@@ -144,7 +153,7 @@ int findCCs(Graph& graph) {
 
 Graph build_ch_complete_graph(string name, Graph& graph, ContractionHierarchy& ch, float best_percentage) {
     struct Info {
-        Info(unsigned _y, long long _arc, unsigned _weight): y{_y}, arc{_arc}, weight{_weight} {}
+        Info(unsigned _y, long long _arc, unsigned _weight) : y{_y}, arc{_arc}, weight{_weight} {}
         unsigned y;
         long long arc;
         unsigned weight;
@@ -305,7 +314,7 @@ int main(int argc, const char* argv[]) {
         string pbf_file = vm["graph"].as<string>();
 
         cout << "start loading graph" << endl;
-        auto graph = loadGraph(pbf_file + "/edges.csv"); //simple_load_osm_car_routing_graph_from_pbf(pbf_file);
+        auto graph = loadGraph(pbf_file + "/edges.csv");  // simple_load_osm_car_routing_graph_from_pbf(pbf_file);
 
         graph = removeSmallCCs(graph, findCCs(graph));
         cout << "graph loaded!" << endl;
@@ -316,12 +325,8 @@ int main(int argc, const char* argv[]) {
         // Build the shortest path index
         cout << "start building contraction hierarchy" << endl;
         string ch_save = pbf_file + ".ch";
-        auto ch = boost::filesystem::exists(ch_save) ? ContractionHierarchy::load_file(ch_save) : ContractionHierarchy::build(
-            graph.node_count(), 
-            tail, 
-            graph.forward.head, 
-            graph.forward.weight, 
-            [](string msg) { std::cout << msg << endl; 
+        auto ch = boost::filesystem::exists(ch_save) ? ContractionHierarchy::load_file(ch_save) : ContractionHierarchy::build(graph.node_count(), tail, graph.forward.head, graph.forward.weight, [](string msg) {
+            std::cout << msg << endl;
         });
         if (!boost::filesystem::exists(ch_save)) ch.save_file(ch_save);
         cout << "contraction hierarchy finished!" << endl;
@@ -334,7 +339,7 @@ int main(int argc, const char* argv[]) {
         build_up_down_cores(g);
 
         cout << "ch search graph build" << endl;
-        
+
         cout << "start partition: " << g.node_count() << " nodes, " << g.forward.head.size() << " edges" << endl;
         auto partition = partition_graph(g, vm["partition"].as<int>(), core);
         g.compute_boundary_node(partition);
@@ -343,12 +348,19 @@ int main(int argc, const char* argv[]) {
             out << partition[i] << endl;
         }
         out.close();
+
+        for (int x = 0; x < graph.node_count(); ++x) {
+            for (int arc = graph.forward.first_out[x]; arc < graph.forward.first_out[x + 1]; ++arc) {
+                int y = graph.forward.head[arc];
+            }
+        }
+
         ArcFlags flags(g, partition, vm["partition"].as<int>());
-        flags.precompute(0, vm["partition"].as<int>());
+        // flags.precompute(0, vm["partition"].as<int>());
 
         // ContractionHierarchyQuery query(ch);
-        //quey.partition = partition;
-        //query.partition_size = vm["partition"].as<int>();
+        // quey.partition = partition;
+        // query.partition_size = vm["partition"].as<int>();
         // query.edge_hashes = flags.label_hashes;
         // query.hash_flags = flags.labels;
 
