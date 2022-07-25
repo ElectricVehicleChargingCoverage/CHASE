@@ -193,6 +193,7 @@ void ArcFlags::precompute(int start, int end) {
         sync_out.println("Start computation for cell ", cell_idx);
         int i= 0; int j = 0;
         for (int x = 0; x < g.node_count(); ++x) {
+            if (partition[x] != cell_idx) continue;
             if (g.boundary_nodes[x]){
                 markEdgesOnSptTo(x, cell_idx);
                 markEdgesOnSptFrom(x, cell_idx);
