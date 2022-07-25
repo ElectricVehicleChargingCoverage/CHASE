@@ -144,7 +144,7 @@ int findCCs(Graph& graph) {
 
 Graph build_ch_complete_graph(string name, Graph& graph, ContractionHierarchy& ch, float best_percentage) {
     struct Info {
-        Info(unsigned _y, unsigned _arc, unsigned _weight): y{_y}, arc{_arc}, weight{_weight} {}
+        Info(unsigned _y, long long _arc, unsigned _weight): y{_y}, arc{_arc}, weight{_weight} {}
         unsigned y;
         long long arc;
         unsigned weight;

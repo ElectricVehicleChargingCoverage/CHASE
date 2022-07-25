@@ -71,7 +71,7 @@ void ArcFlags::precompute(int start, int end) {
     auto markEdgesOnSptTo = [&](unsigned src, int cell_idx) {
         vector<unsigned> tentative_dist(g.node_count(), inf_weight);
         vector<bool> down(g.node_count(), false);
-        vector<int> pred(g.node_count(), -1);
+        vector<long long> pred(g.node_count(), -1);
 
         MinIDQueue queue(g.node_count());
         TimestampFlags was_pushed(g.node_count());
@@ -128,7 +128,7 @@ void ArcFlags::precompute(int start, int end) {
     auto markEdgesOnSptFrom = [&](unsigned src, int cell_idx) {
         vector<unsigned> tentative_dist(g.node_count(), inf_weight);
         vector<bool> down(g.node_count(), false);
-        vector<int> pred(g.node_count(), -1);
+        vector<long long> pred(g.node_count(), -1);
 
         MinIDQueue queue(g.node_count());
         TimestampFlags was_pushed(g.node_count());
