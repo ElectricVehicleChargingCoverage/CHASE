@@ -191,6 +191,7 @@ void ArcFlags::precompute(int start, int end) {
 
     auto precomputeCell = [&](int cell_idx) {
         sync_out.println("Start computation for cell ", cell_idx);
+        int i= 0; int j = 0;
         for (int x = 0; x < g.node_count(); ++x) {
             if (g.boundary_nodes[x]){
                 markEdgesOnSptTo(x, cell_idx);
@@ -198,12 +199,16 @@ void ArcFlags::precompute(int start, int end) {
             }
             for (int arc = g.forward.first_out[x]; arc < g.forward.first_out[x+1]; ++arc) {
                 int y = g.forward.head[arc];
-                if (partition[x] == partition[y])
+                if (partition[y] == cell_idx) {
+                    i++;
                     cell_maps_arc_flags[cell_idx + partition_size][g.forward.original_arc[arc]] = true;
+                }else{
+                    j++;
+                }
             }
             for (int arc = g.backward.first_out[x]; arc < g.backward.first_out[x+1]; ++arc) {
                 int y = g.backward.head[arc];
-                if (partition[x] == partition[y])
+                if (partition[y] == cell_idx)
                     cell_maps_arc_flags[cell_idx][g.backward.original_arc[arc]] = true;
             }
         }
