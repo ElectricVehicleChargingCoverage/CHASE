@@ -116,7 +116,7 @@ public:
 	ContractionHierarchyQuery&add_target(unsigned t, unsigned dist_to_t = 0);
 
 	ContractionHierarchyQuery&run();
-	ContractionHierarchyQuery&run_chase(float core);
+	ContractionHierarchyQuery&run_chase(unsigned min_rank);
 
 	unsigned get_used_source();
 	unsigned get_used_target();
@@ -124,6 +124,7 @@ public:
 	unsigned get_distance();
 	std::vector<unsigned>get_node_path();
 	std::vector<unsigned>get_arc_path();
+	std::vector<long long>get_path();
 
 	template<class ExtraWeight, class LinkFunction>
 	detail::GetExtraWeightType<ExtraWeight> get_extra_weight_distance(const ExtraWeight&extra_weight, const LinkFunction&link);
@@ -214,10 +215,11 @@ public:
 	std::set<int> C_S, C_T; 
 	unsigned shortest_path_meeting_node;
 	unsigned many_to_many_source_or_target_count;
+	unsigned relaxed, visited;
 
 	std::vector<int> partition;
 	int partition_size;
-	std::unordered_map<int, size_t> edge_hashes;
+	std::unordered_map<long long, size_t> edge_hashes;
 	std::unordered_map<size_t, boost::dynamic_bitset<>> hash_flags;
 
 	enum class InternalState:unsigned{

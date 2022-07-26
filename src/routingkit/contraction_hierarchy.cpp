@@ -8,6 +8,7 @@
 
 #include <vector>
 #include <fstream>
+#include <iostream>
 #include <stdexcept>
 
 namespace RoutingKit{
@@ -1443,6 +1444,8 @@ ContractionHierarchyQuery&ContractionHierarchyQuery::reset(){
 	was_backward_pushed.reset_all();
 	backward_queue.clear();
 	shortest_path_meeting_node = invalid_id;
+	relaxed = 0;
+	visited = 0;
 
 	state = ContractionHierarchyQuery::InternalState::initialized;
 	return *this;
@@ -1543,21 +1546,26 @@ namespace{
 		MinIDQueue&forward_queue,
 		std::vector<unsigned>&forward_tentative_distance,
 		const SetPred&set_predecessor,
-		const std::set<int> core_cells,
-		std::unordered_map<int, size_t> edge_hashes,
-	 	std::unordered_map<size_t, boost::dynamic_bitset<>> hash_flags,
+		unsigned& visited,
+		const std::set<int>& core_cells,
+		std::unordered_map<long long, size_t>& edge_hashes,
+	 	std::unordered_map<size_t, boost::dynamic_bitset<>>& hash_flags,
 		bool flags = false,
 		int partition_size = 0
 	){
 		for(unsigned arc = forward_first_out[node]; arc < forward_first_out[node+1]; ++arc){
-			bool skip = flags? true : false;
+			visited++;
+			unsigned h = forward_head[arc], d = distance_to_node + forward_weight[arc];
+			bool skip = flags;
 			if (flags) {
-				for (int cell : core_cells)
-					if (hash_flags[edge_hashes[forward? arc : -arc]][forward? cell : cell + partition_size] == 1)
+				for (int cell : core_cells) {
+					// std::cout << cell << " " << arc << " " << forward << std::endl;
+					if (edge_hashes.find(forward? arc : -(long long)arc) == edge_hashes.end()) continue;
+					if (hash_flags[edge_hashes[forward? arc : -(long long)arc]][forward? cell : cell + partition_size] == 1)
 						skip = false;
+				}
 			}
 			if (skip) continue;
-			unsigned h = forward_head[arc], d = distance_to_node + forward_weight[arc];
 			if(was_forward_pushed.is_set(h)){
 				if(d < forward_tentative_distance[h]){
 					forward_queue.decrease_key({h, d});
@@ -1600,16 +1608,18 @@ namespace{
 		MinIDQueue&forward_queue,
 		std::vector<unsigned>&forward_tentative_distance, const std::vector<unsigned>&backward_tentative_distance,
 		std::vector<unsigned>&forward_predecessor_node, std::vector<unsigned>&forward_predecessor_arc,
-		const std::vector<unsigned>& core_entries, const std::set<int>& core_cells,
-		const std::unordered_map<int, size_t> edge_hashes, const std::unordered_map<size_t, boost::dynamic_bitset<>> hash_flags,
+		unsigned& relaxed, unsigned& visited,
+		std::vector<unsigned>& core_entries, std::set<int>& core_cells,
+		std::unordered_map<long long, size_t>& edge_hashes, std::unordered_map<size_t, boost::dynamic_bitset<>>& hash_flags,
 		bool stall=true,
-		unsigned min_rank = 0,
+		unsigned min_rank = invalid_id,
 		bool flags = false,
 		int partition_size = 0
 	){
 		auto p = forward_queue.pop();
 		auto popped_node = p.id;
 		auto distance_to_popped_node = p.key;
+		relaxed++;
 
 		if(was_backward_pushed.is_set(popped_node)){
 			if(shortest_path_length > distance_to_popped_node + backward_tentative_distance[popped_node]){
@@ -1617,15 +1627,17 @@ namespace{
 				shortest_path_meeting_node = popped_node;
 			}
 		}
-
-		if(popped_node > min_rank && (!stall ||
+		if (!flags && popped_node >= min_rank) {
+			core_entries.push_back(popped_node);
+		}
+		if(((flags && popped_node >= min_rank) || (!flags && (popped_node < min_rank || min_rank == invalid_id))) && (!stall ||
 			!forward_can_stall_at_node(
 				popped_node,
 				backward_first_out, backward_head, backward_weight,
 				was_forward_pushed,
 				forward_tentative_distance, backward_tentative_distance
 			))
-		)
+		) {
 			forward_expand_upward_ch_arcs_of_node_chase(
 				forward,
 				popped_node, distance_to_popped_node,
@@ -1636,11 +1648,13 @@ namespace{
 					forward_predecessor_node[x] = pred_node;
 					forward_predecessor_arc[x] = pred_arc;
 				},
+				visited,
 				core_cells,
 				edge_hashes, hash_flags,
 				flags,
 				partition_size
 			);
+		}
 	}
 
 	void full_forward_search(
@@ -1668,7 +1682,7 @@ namespace{
 	}
 }
 
-ContractionHierarchyQuery& ContractionHierarchyQuery::run_chase(float core){
+ContractionHierarchyQuery& ContractionHierarchyQuery::run_chase(unsigned min_rank){
 	assert(ch && "query object must have an attached CH");
 	assert(!forward_queue.empty() && "must add at least one source before calling run");
 	assert(!backward_queue.empty() && "must add at least one target before calling run");
@@ -1712,7 +1726,8 @@ ContractionHierarchyQuery& ContractionHierarchyQuery::run_chase(float core){
 					forward_queue,
 					forward_tentative_distance, backward_tentative_distance,
 					forward_predecessor_node, forward_predecessor_arc,
-					S, C_S,
+					relaxed, visited,
+					S, C_T,
 					edge_hashes, hash_flags,
 					stall,
 					min_rank,
@@ -1730,7 +1745,8 @@ ContractionHierarchyQuery& ContractionHierarchyQuery::run_chase(float core){
 					backward_queue,
 					backward_tentative_distance, forward_tentative_distance,
 					backward_predecessor_node, backward_predecessor_arc,
-					T, C_T,
+					relaxed, visited,
+					T, C_S,
 					edge_hashes, hash_flags,
 					stall,
 					min_rank,
@@ -1741,23 +1757,26 @@ ContractionHierarchyQuery& ContractionHierarchyQuery::run_chase(float core){
 			}
 		}
 	};
-	//phase 1: pure ch query stopping at core
-	search();
+	// phase 1: pure ch query stopping at core
+	search(true, min_rank);
 	if ((S.empty() && T.empty()) || (S.size() == 1 && T.size() == 1 && S.front() == T.front())){
 		state = ContractionHierarchyQuery::InternalState::run;
 		return *this;
 	}
-	//phase 2: ch query from discovered core entry points aided by arc flags
-	reset();
-	for (auto s : S) {
+	// phase 2: ch query from discovered core entry points aided by arc flags
+	forward_queue.clear();
+	backward_queue.clear();
+	
+	for (unsigned s : S) {
 		forward_queue.push({s, forward_tentative_distance[s]});
 		C_S.insert(partition[s]);
+		was_forward_pushed.set(s);
 	}
-	for (auto t : T) {
+	for (unsigned t : T) {
 		backward_queue.push({t, backward_tentative_distance[t]});
 		C_T.insert(partition[t]);
+		was_backward_pushed.set(t);
 	}
-	int min_rank = ch->node_count() * (1-core);
 	search(false, min_rank, true);
 	state = ContractionHierarchyQuery::InternalState::run;
 	return *this;
@@ -1805,7 +1824,8 @@ ContractionHierarchyQuery& ContractionHierarchyQuery::run(){
 				forward_queue,
 				forward_tentative_distance, backward_tentative_distance,
 				forward_predecessor_node, forward_predecessor_arc,
-				S, C_S,
+				relaxed, visited,
+				S, C_T,
 				edge_hashes, hash_flags
 			);
 			forward_next = false;
@@ -1819,13 +1839,13 @@ ContractionHierarchyQuery& ContractionHierarchyQuery::run(){
 				backward_queue,
 				backward_tentative_distance, forward_tentative_distance,
 				backward_predecessor_node, backward_predecessor_arc,
-				T, C_T,
+				relaxed, visited,
+				T, C_S,
 				edge_hashes, hash_flags
 			);
 			forward_next = true;
 		}
 	}
-
 	state = ContractionHierarchyQuery::InternalState::run;
 	return *this;
 }
@@ -1900,6 +1920,37 @@ unsigned ContractionHierarchyQuery::get_distance() {
 		return inf_weight;
 	else
 		return forward_tentative_distance[shortest_path_meeting_node] + backward_tentative_distance[shortest_path_meeting_node];
+}
+
+std::vector<long long>ContractionHierarchyQuery::get_path(){
+	assert(ch && "query object must have an attached CH");
+	assert(state == ContractionHierarchyQuery::InternalState::run);
+
+	std::vector<long long> path;
+	if(shortest_path_meeting_node != invalid_id)
+	{
+		std::vector<unsigned>up_path;
+		{
+			unsigned x = shortest_path_meeting_node;
+			while(forward_predecessor_node[x] != invalid_id){
+				assert(was_forward_pushed.is_set(x));
+				up_path.push_back(forward_predecessor_arc[x]);
+				x = forward_predecessor_node[x];
+			}
+		}
+		for(unsigned i=up_path.size(); i>0; --i){
+			path.push_back(up_path[i-1]);
+		}
+		{
+			unsigned x = shortest_path_meeting_node;
+			while(backward_predecessor_node[x] != invalid_id){
+				assert(was_backward_pushed.is_set(x));
+				path.push_back(-(long long)backward_predecessor_arc[x]);
+				x = backward_predecessor_node[x];
+			}
+		}
+	}
+	return path;
 }
 
 

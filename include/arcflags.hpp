@@ -26,6 +26,7 @@ public:
     vector<float> latitude, longitude;
     vector<int> order;
     unordered_map<int, int> new_id;
+    unordered_map<int, int> old_id;
     vector<bool> boundary_nodes;
     int node_count() { return count; };
     void compute_boundary_node(vector<int> partition){
@@ -71,6 +72,7 @@ void ArcFlags::precompute(int start, int end) {
     auto markEdgesOnSptTo = [&](unsigned src, int cell_idx) {
         vector<unsigned> tentative_dist(g.node_count(), inf_weight);
         vector<bool> down(g.node_count(), false);
+        vector<bool> pop(g.node_count(), false);
         vector<long long> pred(g.node_count(), -1);
 
         MinIDQueue queue(g.node_count());
@@ -80,6 +82,7 @@ void ArcFlags::precompute(int start, int end) {
         while (!queue.empty()) {
             auto popped = queue.pop();
             int v = popped.id;
+            pop[v] = true;
             auto distance_to_popped_node = popped.key;
             if (pred[v] != -1) {
                 cell_maps_arc_flags[cell_idx][pred[v]] = true; 
@@ -87,6 +90,10 @@ void ArcFlags::precompute(int start, int end) {
             if (v == src || !down[v]){
                 for (int arc = g.backward_up.first_out[v]; arc < g.backward_up.first_out[v+1]; ++arc) {
                     unsigned u = g.backward_up.head[arc]; 
+                    if (pop[u]) continue;
+                    if (src == 114015 && u == 114849) {
+                        cout << "arc: " << g.backward_up.original_arc[arc] << endl;
+                    }
                     unsigned d = distance_to_popped_node + g.backward_up.weight[arc];
                     if(was_pushed.is_set(u)){
                         if (d < tentative_dist[u]) {
@@ -106,6 +113,7 @@ void ArcFlags::precompute(int start, int end) {
             }
             for (int arc = g.backward_down.first_out[v]; arc < g.backward_down.first_out[v+1]; ++arc) {
                 unsigned u = g.backward_down.head[arc];
+                if (pop[u]) continue;
                 unsigned d = distance_to_popped_node + g.backward_down.weight[arc];
                 if(was_pushed.is_set(u)){
                     if (d < tentative_dist[u]) {
@@ -128,6 +136,7 @@ void ArcFlags::precompute(int start, int end) {
     auto markEdgesOnSptFrom = [&](unsigned src, int cell_idx) {
         vector<unsigned> tentative_dist(g.node_count(), inf_weight);
         vector<bool> down(g.node_count(), false);
+        vector<bool> pop(g.node_count(), false);
         vector<long long> pred(g.node_count(), -1);
 
         MinIDQueue queue(g.node_count());
@@ -137,6 +146,7 @@ void ArcFlags::precompute(int start, int end) {
         while (!queue.empty()) {
             auto popped = queue.pop();
             int v = popped.id;
+            pop[v] = true;
             auto distance_to_popped_node = popped.key;
             if (pred[v] != -1) {
                 cell_maps_arc_flags[cell_idx + partition_size][pred[v]] = true; 
@@ -144,6 +154,7 @@ void ArcFlags::precompute(int start, int end) {
             if (v == src || !down[v]){
                 for (int arc = g.forward_up.first_out[v]; arc < g.forward_up.first_out[v+1]; ++arc) {
                     unsigned u = g.forward_up.head[arc]; 
+                    if (pop[u]) continue;
                     unsigned d = distance_to_popped_node + g.forward_up.weight[arc];
                     if(was_pushed.is_set(u)){
                         if (d < tentative_dist[u]) {
@@ -164,6 +175,7 @@ void ArcFlags::precompute(int start, int end) {
             for (int arc = g.forward_down.first_out[v]; arc < g.forward_down.first_out[v+1]; ++arc) {
                 unsigned u = g.forward_down.head[arc];
                 unsigned d = distance_to_popped_node + g.forward_down.weight[arc];
+                if (pop[u]) continue;
                 if(was_pushed.is_set(u)){
                     if (d < tentative_dist[u]) {
                         pred[u] = g.forward_down.original_arc[arc];
@@ -191,7 +203,6 @@ void ArcFlags::precompute(int start, int end) {
 
     auto precomputeCell = [&](int cell_idx) {
         sync_out.println("Start computation for cell ", cell_idx);
-        int i= 0; int j = 0;
         for (int x = 0; x < g.node_count(); ++x) {
             if (partition[x] != cell_idx) continue;
             if (g.boundary_nodes[x]){
@@ -201,16 +212,14 @@ void ArcFlags::precompute(int start, int end) {
             for (int arc = g.forward.first_out[x]; arc < g.forward.first_out[x+1]; ++arc) {
                 int y = g.forward.head[arc];
                 if (partition[y] == cell_idx) {
-                    i++;
                     cell_maps_arc_flags[cell_idx + partition_size][g.forward.original_arc[arc]] = true;
-                }else{
-                    j++;
                 }
             }
             for (int arc = g.backward.first_out[x]; arc < g.backward.first_out[x+1]; ++arc) {
                 int y = g.backward.head[arc];
-                if (partition[y] == cell_idx)
+                if (partition[y] == cell_idx) {
                     cell_maps_arc_flags[cell_idx][g.backward.original_arc[arc]] = true;
+                }
             }
         }
         saveFlags(cell_idx, cell_maps_arc_flags[cell_idx]);
@@ -222,6 +231,7 @@ void ArcFlags::precompute(int start, int end) {
 
     for (int i = start; i < end; i++) {
         pool.push_task(precomputeCell, i);
+        // precomputeCell(i);
     }
 
     while (pool.get_tasks_total() > 0) {

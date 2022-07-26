@@ -2,8 +2,7 @@
 #include <routingkit/contraction_hierarchy.h>
 #include <routingkit/inverse_vector.h>
 #include <routingkit/osm_simple.h>
-#include <scotch.h>
-
+// #include <scotch.h>
 #include <arcflags.hpp>
 #include <boost/filesystem.hpp>
 #include <boost/program_options.hpp>
@@ -153,7 +152,7 @@ int findCCs(Graph& graph) {
 
 Graph build_ch_complete_graph(string name, Graph& graph, ContractionHierarchy& ch, float best_percentage) {
     struct Info {
-        Info(unsigned _y, long long _arc, unsigned _weight) : y{_y}, arc{_arc}, weight{_weight} {}
+        Info(unsigned _y, long long _arc, unsigned _weight): y{_y}, arc{_arc}, weight{_weight} {}
         unsigned y;
         long long arc;
         unsigned weight;
@@ -188,11 +187,15 @@ Graph build_ch_complete_graph(string name, Graph& graph, ContractionHierarchy& c
     Graph g = Graph(nodes.size(), name);
     for (int x : nodes) {
         g.new_id[x] = g.forward.first_out.size();
+        g.old_id[g.forward.first_out.size()] = x;
+
         g.forward.first_out.push_back(g.forward.head.size());
         g.backward.first_out.push_back(g.backward.head.size());
+
         g.latitude.push_back(graph.latitude[ch.order[x]]);
         g.longitude.push_back(graph.longitude[ch.order[x]]);
         g.order.push_back(ch.order[x]);
+
         for (auto& info : adj[x]) {
             g.forward.head.push_back(id_map[info.y]);
             g.forward.weight.push_back(info.weight);
@@ -213,11 +216,13 @@ void build_up_down_cores(Graph& g) {
     for (int x = 0; x < g.node_count(); ++x) {
         g.forward_up.first_out.push_back(g.forward_up.head.size());
         g.forward_down.first_out.push_back(g.forward_down.head.size());
+
         g.backward_up.first_out.push_back(g.backward_up.head.size());
         g.backward_down.first_out.push_back(g.backward_down.head.size());
+        
         for (int arc = g.forward.first_out[x]; arc < g.forward.first_out[x + 1]; ++arc) {
             int y = g.forward.head[arc];
-            if (x < y) {
+            if (g.old_id[x] < g.old_id[y]) {
                 g.forward_up.head.push_back(y);
                 g.forward_up.weight.push_back(g.forward.weight[arc]);
                 g.forward_up.original_arc.push_back(g.forward.original_arc[arc]);
@@ -229,9 +234,9 @@ void build_up_down_cores(Graph& g) {
         }
         for (int arc = g.backward.first_out[x]; arc < g.backward.first_out[x + 1]; ++arc) {
             int y = g.backward.head[arc];
-            if (x < y) {
+            if (g.old_id[x] < g.old_id[y]) {
                 g.backward_up.head.push_back(y);
-                g.backward_up.weight.push_back(g.forward.weight[arc]);
+                g.backward_up.weight.push_back(g.backward.weight[arc]);
                 g.backward_up.original_arc.push_back(g.backward.original_arc[arc]);
             } else {
                 g.backward_down.head.push_back(y);
@@ -246,52 +251,246 @@ void build_up_down_cores(Graph& g) {
     g.backward_down.first_out.push_back(g.backward_down.head.size());
 }
 
-vector<int> partition_graph(Graph& g, int nparts, float best_percentage) {
-    int n = g.node_count();
+// vector<int> partition_graph(Graph& g, int nparts, float best_percentage) {
+//     int n = g.node_count();
 
-    vector<SCOTCH_Num> xadj;
-    vector<SCOTCH_Num> adjncy;
-    for (int x = 0; x < g.node_count(); ++x) {
-        xadj.push_back(adjncy.size());
-        vector<bool> is_set(g.node_count(), false);
-        // shortcut edges
-        for (int arc = g.forward.first_out[x]; arc < g.forward.first_out[x + 1]; ++arc) {
-            int y = g.forward.head[arc];
-            if (is_set[y] || y == x) continue;
-            adjncy.push_back(y);
-            is_set[y] = true;
-        }
-        for (int arc = g.backward.first_out[x]; arc < g.backward.first_out[x + 1]; ++arc) {
-            int y = g.backward.head[arc];
-            if (is_set[y] || y == x) continue;
-            adjncy.push_back(y);
-            is_set[y] = true;
-        }
+//     vector<SCOTCH_Num> xadj;
+//     vector<SCOTCH_Num> adjncy;
+//     for (int x = 0; x < g.node_count(); ++x) {
+//         xadj.push_back(adjncy.size());
+//         vector<bool> is_set(g.node_count(), false);
+//         // shortcut edges
+//         for (int arc = g.forward.first_out[x]; arc < g.forward.first_out[x + 1]; ++arc) {
+//             int y = g.forward.head[arc];
+//             if (is_set[y] || y == x) continue;
+//             adjncy.push_back(y);
+//             is_set[y] = true;
+//         }
+//         for (int arc = g.backward.first_out[x]; arc < g.backward.first_out[x + 1]; ++arc) {
+//             int y = g.backward.head[arc];
+//             if (is_set[y] || y == x) continue;
+//             adjncy.push_back(y);
+//             is_set[y] = true;
+//         }
+//     }
+//     xadj.push_back(adjncy.size());
+
+//     SCOTCH_Graph grafdat;
+//     SCOTCH_Strat stradat;
+//     SCOTCH_Num baseval;
+//     SCOTCH_Num vertnbr;
+//     int o;
+
+//     SCOTCH_graphInit(&grafdat);
+//     baseval = 0;
+//     vertnbr = n;
+//     o = 1;
+//     vector<SCOTCH_Num> part(n);
+//     if (SCOTCH_graphBuild(&grafdat, baseval, vertnbr, &(xadj[0]), &(xadj[1]), NULL, NULL, adjncy.size(), &(adjncy[0]), NULL) == 0) {
+//         SCOTCH_stratInit(&stradat);
+//         if (SCOTCH_graphCheck(&grafdat) == 0) {
+//             o = SCOTCH_graphPart(&grafdat, nparts, &stradat, &(part[0]));
+//         }
+//         SCOTCH_stratExit(&stradat);
+//     }
+//     SCOTCH_graphExit(&grafdat);
+//     vector<int> partition(n);
+//     for (int i = 0; i < n; ++i) partition[i] = part[i];
+//     return partition;
+// }
+
+vector<int> read_partition(string path) {
+    vector<int> partition;
+    ifstream file(path);
+    string line;
+    while (getline(file, line)) {
+        partition.push_back(stoi(line));
     }
-    xadj.push_back(adjncy.size());
-
-    SCOTCH_Graph grafdat;
-    SCOTCH_Strat stradat;
-    SCOTCH_Num baseval;
-    SCOTCH_Num vertnbr;
-    int o;
-
-    SCOTCH_graphInit(&grafdat);
-    baseval = 0;
-    vertnbr = n;
-    o = 1;
-    vector<SCOTCH_Num> part(n);
-    if (SCOTCH_graphBuild(&grafdat, baseval, vertnbr, &(xadj[0]), &(xadj[1]), NULL, NULL, adjncy.size(), &(adjncy[0]), NULL) == 0) {
-        SCOTCH_stratInit(&stradat);
-        if (SCOTCH_graphCheck(&grafdat) == 0) {
-            o = SCOTCH_graphPart(&grafdat, nparts, &stradat, &(part[0]));
-        }
-        SCOTCH_stratExit(&stradat);
-    }
-    SCOTCH_graphExit(&grafdat);
-    vector<int> partition(n);
-    for (int i = 0; i < n; ++i) partition[i] = part[i];
     return partition;
+}
+
+void find_shortest_path_backwards(Graph& g, unsigned src, unsigned trgt, int cell_idx, ArcFlags& flags, ContractionHierarchy& ch) {
+    vector<unsigned> tentative_dist(g.node_count(), inf_weight);
+    vector<bool> down(g.node_count(), false);
+    vector<bool> pop(g.node_count(), false);
+    vector<long long> pred(g.node_count(), -1);
+    vector<int> pred_n(g.node_count(), -1);
+
+    MinIDQueue queue(g.node_count());
+    TimestampFlags was_pushed(g.node_count());
+    queue.push({trgt, 0});
+
+    while (!queue.empty()) {
+        auto popped = queue.pop();
+        int v = popped.id;
+        pop[v] = true;
+        auto distance_to_popped_node = popped.key;
+        if (v == src) {
+            break;
+        }
+        if (v == trgt || !down[v]){
+            for (int arc = g.backward_up.first_out[v]; arc < g.backward_up.first_out[v+1]; ++arc) {
+                unsigned u = g.backward_up.head[arc];
+                if (pop[u]) continue;
+                unsigned d = distance_to_popped_node + g.backward_up.weight[arc];
+
+                long long orig_arc = g.backward_up.original_arc[arc];
+                unsigned w = (orig_arc >= 0)? ch.forward.weight[(unsigned)orig_arc] : ch.backward.weight[-(unsigned)orig_arc];
+                assert(g.backward_up.weight[arc] == w);
+
+                if(was_pushed.is_set(u)){
+                    if (d < tentative_dist[u]) {
+                        pred[u] = g.backward_up.original_arc[arc];
+                        pred_n[u] = v;
+                        down[u] = false;
+                        queue.decrease_key({u, d});
+                        tentative_dist[u] = d;
+                    }
+                }else if(d < inf_weight){
+                    pred[u] = g.backward_up.original_arc[arc];
+                    pred_n[u] = v;
+                    down[u] = false;
+                    was_pushed.set(u);
+                    queue.push({u, d});
+                    tentative_dist[u] = d;
+                }
+            }
+        }
+        for (int arc = g.backward_down.first_out[v]; arc < g.backward_down.first_out[v+1]; ++arc) {
+            unsigned u = g.backward_down.head[arc];
+            if (pop[u]) continue;
+            unsigned d = distance_to_popped_node + g.backward_down.weight[arc];
+
+            long long orig_arc = g.backward_down.original_arc[arc];
+            unsigned w = (orig_arc >= 0)? ch.forward.weight[(unsigned)orig_arc] : ch.backward.weight[-(unsigned)orig_arc];
+            assert(g.backward_down.weight[arc] == w);
+
+            if(was_pushed.is_set(u)){
+                if (d < tentative_dist[u]) {
+                    pred[u] = g.backward_down.original_arc[arc];
+                    pred_n[u] = v;
+                    down[u] = true;
+                    queue.decrease_key({u, d});
+                    tentative_dist[u] = d;
+                }
+            }else if(d < inf_weight){
+                pred[u] = g.backward_down.original_arc[arc];
+                pred_n[u] = v;
+                down[u] = true;
+                was_pushed.set(u);
+                tentative_dist[u] = d;
+                queue.push({u, d});
+            }
+        }
+    }
+    cout << "dist: " << tentative_dist[src] << endl;
+    list<long long> path;
+    int x = src;
+    while (pred_n[x] != -1) {
+        long long arc = pred[x];
+        // if (flags.partition[x] == cell_idx) cout << "bn: " << x << " " << arc << " bn:" << g.boundary_nodes[x] << endl;
+        cout << "x: " << x << " " << flags.partition[x] << " " << g.boundary_nodes[x] << endl;
+        path.push_back(pred[x]);
+        x = pred_n[x];
+    }
+    cout << "----- arc path ---------" << endl;
+    auto tail_f = invert_inverse_vector(ch.forward.first_out);
+    auto tail_b = invert_inverse_vector(ch.backward.first_out);
+    for (long long arc : path) {
+        unsigned x,y,w;
+        if (arc >= 0){
+            w = ch.forward.weight[(unsigned)arc];
+            x = g.new_id[tail_f[(unsigned)arc]];
+            y = g.new_id[ch.forward.head[(unsigned)arc]];
+        }else {
+            w = ch.backward.weight[(unsigned)(-arc)];
+            y = g.new_id[tail_b[(unsigned)(-arc)]];
+            x = g.new_id[ch.backward.head[(unsigned)(-arc)]];
+        }
+        // unsigned w = (arc >= 0)? ch.forward.weight[(unsigned)arc] : ch.backward.weight[-(unsigned)arc];
+        cout << arc << " " << w << ": " << x << "[" << flags.partition[x] << "] " << y << "[" << flags.partition[y] << "]" << endl;
+    }
+}
+
+void find_shortest_path(Graph& g, unsigned src, unsigned trgt, int cell_idx, ArcFlags& flags) {
+    vector<unsigned> tentative_dist(g.node_count(), inf_weight);
+    vector<bool> down(g.node_count(), false);
+    vector<bool> pop(g.node_count(), false);
+    vector<long long> pred(g.node_count(), -1);
+    vector<unsigned> pred_n(g.node_count(), -1);
+
+    MinIDQueue queue(g.node_count());
+    TimestampFlags was_pushed(g.node_count());
+    queue.push({src, 0});
+    
+    while (!queue.empty()) {
+        auto popped = queue.pop();
+        int v = popped.id;
+        pop[v] = true;
+        auto distance_to_popped_node = popped.key;
+        if (v == trgt) {
+            break;
+        }
+        // if (v == src || !down[v]){
+            for (int arc = g.forward_up.first_out[v]; arc < g.forward_up.first_out[v+1]; ++arc) {
+                // if (flags.labels[flags.label_hashes[g.forward_up.original_arc[arc]]][cell_idx] == 0) continue;
+                unsigned u = g.forward_up.head[arc]; 
+                if (pop[u]) continue;
+                unsigned d = distance_to_popped_node + g.forward_up.weight[arc];
+                if(was_pushed.is_set(u)){
+                    if (d < tentative_dist[u]) {
+                        pred[u] = g.forward_up.original_arc[arc];
+                        pred_n[u] = v;
+                        down[u] = false;
+                        queue.decrease_key({u, d});
+                        tentative_dist[u] = d;
+                    }
+                }else if(d < inf_weight){
+                    pred[u] = g.forward_up.original_arc[arc];
+                    pred_n[u] = v;
+                    down[u] = false;
+                    was_pushed.set(u);
+                    queue.push({u, d});
+                    tentative_dist[u] = d;
+                }
+            }
+        // }
+        for (int arc = g.forward_down.first_out[v]; arc < g.forward_down.first_out[v+1]; ++arc) {
+            unsigned u = g.forward_down.head[arc];
+            if (pop[u]) continue;
+            unsigned d = distance_to_popped_node + g.forward_down.weight[arc];
+            if(was_pushed.is_set(u)){
+                if (d < tentative_dist[u]) {
+                    pred[u] = g.forward_down.original_arc[arc];
+                    pred_n[u] = v;
+                    down[u] = true;
+                    queue.decrease_key({u, d});
+                    tentative_dist[u] = d;
+                }
+            }else if(d < inf_weight){
+                pred[u] = g.forward_down.original_arc[arc];
+                pred_n[u] = v;
+                down[u] = true;
+                was_pushed.set(u);
+                queue.push({u, d});
+                tentative_dist[u] = d;
+            }
+        }
+    }
+    cout << tentative_dist[trgt] << endl;
+    list<long long> path;
+    int x = trgt;
+    while (pred_n[x] != -1) {
+        if (flags.partition[x] == cell_idx && g.boundary_nodes[x]) cout << "bn: " << x << endl;
+        cout << "x: " << x << endl;
+        long long arc = pred[x];
+        path.push_front(pred[x]);
+        x = pred_n[x];
+    }
+    cout << "----- arc path ---------" << endl;
+    for (long long arc : path) {
+        cout << arc << endl;
+    }
 }
 
 int main(int argc, const char* argv[]) {
@@ -314,7 +513,7 @@ int main(int argc, const char* argv[]) {
         string pbf_file = vm["graph"].as<string>();
 
         cout << "start loading graph" << endl;
-        auto graph = loadGraph(pbf_file + "/edges.csv");  // simple_load_osm_car_routing_graph_from_pbf(pbf_file);
+        auto graph = loadGraph(pbf_file + "/edges.csv"); //simple_load_osm_car_routing_graph_from_pbf(pbf_file);
 
         graph = removeSmallCCs(graph, findCCs(graph));
         cout << "graph loaded!" << endl;
@@ -325,8 +524,12 @@ int main(int argc, const char* argv[]) {
         // Build the shortest path index
         cout << "start building contraction hierarchy" << endl;
         string ch_save = pbf_file + ".ch";
-        auto ch = boost::filesystem::exists(ch_save) ? ContractionHierarchy::load_file(ch_save) : ContractionHierarchy::build(graph.node_count(), tail, graph.forward.head, graph.forward.weight, [](string msg) {
-            std::cout << msg << endl;
+        auto ch = boost::filesystem::exists(ch_save) ? ContractionHierarchy::load_file(ch_save) : ContractionHierarchy::build(
+            graph.node_count(), 
+            tail, 
+            graph.forward.head, 
+            graph.forward.weight, 
+            [](string msg) { std::cout << msg << endl; 
         });
         if (!boost::filesystem::exists(ch_save)) ch.save_file(ch_save);
         cout << "contraction hierarchy finished!" << endl;
@@ -339,31 +542,76 @@ int main(int argc, const char* argv[]) {
         build_up_down_cores(g);
 
         cout << "ch search graph build" << endl;
-
+        
         cout << "start partition: " << g.node_count() << " nodes, " << g.forward.head.size() << " edges" << endl;
-        auto partition = partition_graph(g, vm["partition"].as<int>(), core);
+        // auto partition = partition_graph(g, vm["partition"].as<int>(), core);
+        auto partition = read_partition("partition.txt");
         g.compute_boundary_node(partition);
-        ofstream out("partition.txt");
-        for (int i = 0; i < partition.size(); ++i) {
-            out << partition[i] << endl;
-        }
-        out.close();
-
-        for (int x = 0; x < graph.node_count(); ++x) {
-            for (int arc = graph.forward.first_out[x]; arc < graph.forward.first_out[x + 1]; ++arc) {
-                int y = graph.forward.head[arc];
-            }
-        }
 
         ArcFlags flags(g, partition, vm["partition"].as<int>());
+        string import_file = "../flags/" + g.name + "_" + to_string(vm["partition"].as<int>());
+        flags.importFlags(import_file + ".csv", import_file + ".bin");
         // flags.precompute(0, vm["partition"].as<int>());
+        // flags.mergeFlags();
 
-        // ContractionHierarchyQuery query(ch);
-        // quey.partition = partition;
-        // query.partition_size = vm["partition"].as<int>();
-        // query.edge_hashes = flags.label_hashes;
-        // query.hash_flags = flags.labels;
+        ContractionHierarchyQuery query(ch);
+        vector<int> parts(ch.node_count(), -1);
+        for (int i = 0; i < ch.node_count(); ++i) {
+            if (g.new_id.find(i) != g.new_id.end()) {
+                parts[i] = partition[g.new_id[i]];
+            }
+        }
+        query.partition = parts;
+        query.partition_size = vm["partition"].as<int>();
+        query.edge_hashes = flags.label_hashes;
+        query.hash_flags = flags.labels;
 
+        unsigned min_rank = ch.node_count() * (1 - core);
+
+        // run test queries
+        string seed_str = "very_random_seed";
+        seed_seq seed (seed_str.begin(), seed_str.end());
+        mt19937 gen(seed);
+        uniform_int_distribution<> dist(0, g.node_count()-1);
+        int tries = 100000;
+
+        vector<pair<unsigned, unsigned>> routes(tries);
+        vector<unsigned> ch_distances(tries);
+        vector<unsigned> chase_distances(tries);
+        vector<vector<unsigned>> ch_arc_paths(tries);
+        vector<vector<unsigned>> chase_arc_paths(tries);
+        vector<pair<unsigned, unsigned>> metric(tries);
+        
+        auto f_tail = invert_inverse_vector(ch.forward.first_out);
+        auto b_tail = invert_inverse_vector(ch.backward.first_out);
+        for (int i = 0; i < tries; ++i) {
+            cout << "ch i:" << i+1 << "/" << tries << endl; 
+            int x = g.order[dist(gen)];
+            int y = g.order[dist(gen)];
+            query.reset().add_source(x).add_target(y).run();
+            routes[i] = make_pair(x,y);
+            ch_distances[i] = query.get_distance();
+            ch_arc_paths[i] = query.get_arc_path();
+            metric[i] = make_pair(query.relaxed, query.visited);
+        }
+        int j = 0;
+        ofstream out("../log.txt");
+        auto t = std::time(nullptr);
+        auto tm = *std::localtime(&t);
+        out << "log:" << put_time(&tm, "%d-%m-%Y %H-%M-%S") << endl;
+        for (int i = 0; i < tries; ++i) {
+            cout << "i:" << i+1 << "/" << tries << endl; 
+            auto [x, y] = routes[i];
+            query.reset().add_source(x).add_target(y).run_chase(min_rank);
+            chase_distances[i] = query.get_distance();
+            chase_arc_paths[i] = query.get_arc_path();
+            if (chase_distances[i] != ch_distances[i]) j++;
+            cout << "[" << (chase_distances[i] == ch_distances[i]) << "]: " << chase_distances[i] << " " << ch_distances[i] << ": " << metric[i].first << " " << query.relaxed << ", " << metric[i].second << " " << query.visited << endl;
+            out << "[" << (chase_distances[i] == ch_distances[i]) << "]: " << chase_distances[i] << " " << ch_distances[i] << ": " << metric[i].first << " " << query.relaxed << ", " << metric[i].second << " " << query.visited << endl;
+        }
+        cout << "j: " << j << endl;
+        out << "j: " << j << endl;
+        out.close();
     } catch (const exception& ex) {
         cerr << ex.what() << endl;
     }

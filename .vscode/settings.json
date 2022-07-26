@@ -77,6 +77,6 @@
         "variant": "cpp"
     },
     "cmake.debugConfig": {
-        "args": ["-g", "../data/berlin-latest.osm.pbf", "-c", "0.8", "-p", "100"]
+        "args": ["-g", "../data/niedersachsen", "-c", "0.25", "-p", "100"]
     }
 }
