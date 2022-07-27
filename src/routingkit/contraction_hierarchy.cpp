@@ -1562,8 +1562,10 @@ namespace{
 			if (flags) {
 				for (int cell : core_cells) {
 					if (edge_hashes.find(forward? arc : -(long long)arc) == edge_hashes.end()) continue;
-					if (hash_flags[edge_hashes[forward? arc : -(long long)arc]][forward? cell : cell + partition_size] == 1)
+					if (hash_flags[edge_hashes[forward? arc : -(long long)arc]][forward? cell : cell + partition_size] == 1){
 						skip = false;
+						break;
+					}
 				}
 			}
 			if (skip) continue;
@@ -1628,10 +1630,10 @@ namespace{
 				shortest_path_meeting_node = popped_node;
 			}
 		}
-		if (!flags && popped_node >= min_rank) {
+		if (min_rank != invalid_id && !flags && popped_node >= min_rank) {
 			core_entries.push_back(popped_node);
 		}
-		if((flags || (!flags && (popped_node < min_rank || min_rank == invalid_id))) && (!stall ||
+		if((flags || (!flags && (min_rank == invalid_id || popped_node < min_rank))) && (!stall ||
 			!forward_can_stall_at_node(
 				popped_node,
 				backward_first_out, backward_head, backward_weight,
