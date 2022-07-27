@@ -238,7 +238,7 @@ void ArcFlags::mergeFlags(string folder) {
 }
 
 void ArcFlags::exportFlags(string folder) {
-    ofstream file("../flags/" + g.name + "_" + to_string(partition_size) + ".csv");
+    ofstream file("../flags/arcflags/" + g.name + "_" + to_string(partition_size) + ".csv");
     file << "edge_id,key\n";
     for (auto& [edge, key] : preprocessing_label_hash) {
         file << edge << "," << key << "\n";
@@ -270,7 +270,7 @@ void ArcFlags::exportFlags(string folder) {
         for (int i = 0; i < flagBytes.size(); i++)
             bytes.push_back(flagBytes[flagBytes.size() - 1 - i]);
     }
-    ofstream outfile("../flags/" + g.name + "_" + to_string(partition_size) + ".bin", ios::out | ios::binary);
+    ofstream outfile("../flags/arcflags/" + g.name + "_" + to_string(partition_size) + ".bin", ios::out | ios::binary);
     outfile.write((const char*)&bytes[0], bytes.size());
 }
 

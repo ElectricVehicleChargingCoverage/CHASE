@@ -343,7 +343,7 @@ void Skarf::exportFlags(string folder) {
         for (int i = 0; i < flagBytes.size(); i++)
             bytes.push_back(flagBytes[flagBytes.size() - 1 - i]);
     }
-    ofstream outfile("../flags/" + g.name + "_" + to_string(partition_size) + ".bin", ios::out | ios::binary);
+    ofstream outfile("../flags/" + folder + "/" + g.name + "_" + to_string(partition_size) + ".bin", ios::out | ios::binary);
     outfile.write((const char*)&bytes[0], bytes.size());
 }
 
