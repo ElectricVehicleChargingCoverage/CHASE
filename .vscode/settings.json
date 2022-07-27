@@ -74,7 +74,8 @@
         "typeindex": "cpp",
         "typeinfo": "cpp",
         "valarray": "cpp",
-        "variant": "cpp"
+        "variant": "cpp",
+        "*.ipp": "cpp"
     },
     "cmake.debugConfig": {
         "args": ["-g", "../data/niedersachsen", "-c", "0.25", "-p", "100"]

@@ -18,9 +18,9 @@ class ArcFlags {
     int partition_size;
     ArcFlags(Graph& _g, vector<int>& _partition, int _partition_size) : g{_g}, partition{_partition}, partition_size{_partition_size} {};
     void precompute(int start, int end);
-    void mergeFlags(string folder);
+    void mergeFlags();
     void compress(unordered_map<long long, boost::dynamic_bitset<>>& labels);
-    void exportFlags(string folder);
+    void exportFlags();
     void importFlags(string edges_path, string flags_path);
     unordered_map<size_t, boost::dynamic_bitset<>> preprocessing_labels;
     unordered_map<long long, size_t> preprocessing_label_hash;
@@ -60,9 +60,6 @@ void ArcFlags::precompute(int start, int end) {
                 for (int arc = g.backward_up.first_out[v]; arc < g.backward_up.first_out[v + 1]; ++arc) {
                     unsigned u = g.backward_up.head[arc];
                     if (pop[u]) continue;
-                    if (src == 114015 && u == 114849) {
-                        cout << "arc: " << g.backward_up.original_arc[arc] << endl;
-                    }
                     unsigned d = distance_to_popped_node + g.backward_up.weight[arc];
                     if (was_pushed.is_set(u)) {
                         if (d < tentative_dist[u]) {
@@ -164,7 +161,7 @@ void ArcFlags::precompute(int start, int end) {
     };
 
     auto saveFlags = [&](int cell_idx, const unordered_map<long long, bool>& map) {
-        ofstream out("../flags/" + g.name + "_" + to_string(partition_size) + "_" + to_string(cell_idx));
+        ofstream out("../flags/arcflags/" + g.name + "_" + to_string(partition_size) + "_" + to_string(cell_idx));
         for (auto [e, _] : map)
             if (_) out << e << endl;
         out.close();
@@ -216,11 +213,11 @@ void ArcFlags::precompute(int start, int end) {
     precomputed = true;
 }
 
-void ArcFlags::mergeFlags(string folder) {
+void ArcFlags::mergeFlags() {
     unordered_map<long long, boost::dynamic_bitset<>> labels;
     for (int i = 0; i < 2 * partition_size; i++) {
         cout << "merge cell " << i << endl;
-        string file_name = "../flags/" + g.name + "_" + to_string(partition_size) + "_" + to_string(i);
+        string file_name = "../flags/arcflags" + g.name + "_" + to_string(partition_size) + "_" + to_string(i);
         ifstream file(file_name);
         string line;
         while (getline(file, line)) {
@@ -232,12 +229,12 @@ void ArcFlags::mergeFlags(string folder) {
     cout << "Start compressing" << endl;
     compress(labels);
     cout << "Start exporting" << endl;
-    exportFlags(folder);
+    exportFlags();
     cout << "Finished exporting" << endl;
     precomputed = true;
 }
 
-void ArcFlags::exportFlags(string folder) {
+void ArcFlags::exportFlags() {
     ofstream file("../flags/arcflags/" + g.name + "_" + to_string(partition_size) + ".csv");
     file << "edge_id,key\n";
     for (auto& [edge, key] : preprocessing_label_hash) {

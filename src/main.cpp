@@ -64,7 +64,6 @@ void start_experiments(int tries, ContractionHierarchy& ch, Graph& g, ArcFlags& 
     int f = 0;
     for (int i = 0; i < tries; ++i) {
         auto [x, y] = routes[i];
-
         query.reset().add_source(x).add_target(y);
         auto start = chrono::high_resolution_clock::now();
         query.run_chase(min_rank);
@@ -75,7 +74,7 @@ void start_experiments(int tries, ContractionHierarchy& ch, Graph& g, ArcFlags& 
         metric_chase[i] = make_pair(query.relaxed, query.visited);
 
         if (chase_distances[i] != ch_distances[i]) f++;
-        cout << "[" << ((chase_distances[i] == ch_distances[i])? "PASS" : "FAIL") << "] i:" << i + 1 << "/" << tries << endl;
+        cout << "[" << ((chase_distances[i] == ch_distances[i])? "PASS" : "FAIL") << "] " << i + 1 << "/" << tries << endl;
         out << (chase_distances[i] == ch_distances[i]) << "," << chase_distances[i] << "," << ch_distances[i] << "," << metric_ch[i].first << "," << query.relaxed << "," << metric_ch[i].second << "," << query.visited << "," << ch_time[i] << "," << chase_time[i] << endl;
     }
     cout << "failed: " << f << endl;
@@ -86,7 +85,7 @@ int main(int argc, const char* argv[]) {
     try {
         namespace po = boost::program_options;
         po::options_description description("ParkPlacement");
-        description.add_options()("help,h", "Display this help message")("graph,g", po::value<string>(), "Graph pbf file")("core,c", po::value<float>()->default_value(1.0), "Number in [0,1] describing the core size")("partition,p", po::value<int>()->default_value(100), "Partition size");
+        description.add_options()("help,h", "Display this help message")("graph,g", po::value<string>(), "Graph pbf file")("core,c", po::value<float>()->default_value(1.0), "Number in [0,1] describing the core size")("partition,p", po::value<int>()->default_value(100), "Partition size")("tries,t", po::value<int>()->default_value(0), "number of test queries");
         po::variables_map vm;
         po::store(po::command_line_parser(argc, argv).options(description).run(), vm);
         po::notify(vm);
@@ -113,6 +112,7 @@ int main(int argc, const char* argv[]) {
 
         vector<string> csv = split(input_path, "/", false);
         string name = csv.back() + "_core_" + to_string(core);
+        cout << "name: " << name << endl;
 
         // Build the shortest path index
         cout << "start building contraction hierarchy" << endl;
@@ -131,6 +131,7 @@ int main(int argc, const char* argv[]) {
         cout << "start partition: " << g.node_count() << " nodes, " << g.forward.head.size() << " edges" << endl;
         int partition_size = vm["partition"].as<int>();
         string partition_location = input_path + "/" + name + "_" + to_string(partition_size) + ".part";
+        cout << "read partition: " << boost::filesystem::exists(partition_location)  << endl;
         auto partition = boost::filesystem::exists(partition_location) ? read_partition(partition_location) : partition_graph(g, vm["partition"].as<int>(), core);
         if (!boost::filesystem::exists(partition_location))
             export_partition(partition, partition_location);
@@ -139,11 +140,11 @@ int main(int argc, const char* argv[]) {
 
         ArcFlags flags(g, partition, partition_size);
         string import_file = "../flags/arcflags/" + g.name + "_" + to_string(partition_size);
+        // flags.mergeFlags("arcflags");
         flags.importFlags(import_file + ".csv", import_file + ".bin");
         // flags.precompute(0, vm["partition"].as<int>());
-        // flags.mergeFlags();
 
-        start_experiments(10000, ch, g, flags, min_rank);
+        start_experiments(vm["tries"].as<int>(), ch, g, flags, min_rank);
     } catch (const exception& ex) {
         cerr << ex.what() << endl;
     }
