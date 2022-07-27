@@ -1,6 +1,6 @@
 bin/
 build/
-log/
+logs/
 data/
 lib/
 CMakeCache.txt

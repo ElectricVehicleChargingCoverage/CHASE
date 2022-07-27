@@ -282,7 +282,7 @@ int main(int argc, const char* argv[]) {
             return 0;
         }
 
-        string input_path = vm["graph"].as<string>();
+        string input_path = "../data/" + vm["graph"].as<string>();
 
         cout << "start loading graph" << endl;
         auto graph = loadGraph(input_path + "/edges.csv");
@@ -320,7 +320,7 @@ int main(int argc, const char* argv[]) {
         string partition_location = input_path + "/" + name + "_" + to_string(partition_size) + ".part";
         auto partition = boost::filesystem::exists(partition_location)? read_partition(partition_location) : partition_graph(g, vm["partition"].as<int>(), core);
         if (!boost::filesystem::exists(partition_location)) 
-            export_partition(partition, input_path + "/" + name + ".part");
+            export_partition(partition, partition_location);
 
         g.compute_boundary_node(partition);
 
