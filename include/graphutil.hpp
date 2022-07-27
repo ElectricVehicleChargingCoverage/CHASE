@@ -4,22 +4,25 @@
 #include <routingkit/contraction_hierarchy.h>
 #include <scotch.h>
 
+#include "stringutil.hpp"
+
 using namespace std;
 using namespace RoutingKit;
 
 struct Graph {
-private:
+   private:
     int count;
-public:
-    Graph(int _count, string _name=""): count{_count}, name{_name} {}
-    struct Side{
-        vector<unsigned>first_out;
-        vector<unsigned>head;
-        vector<unsigned>weight;
-        vector<long long>original_arc;
+
+   public:
+    Graph(int _count, string _name = "") : count{_count}, name{_name} {}
+    struct Side {
+        vector<unsigned> first_out;
+        vector<unsigned> head;
+        vector<unsigned> weight;
+        vector<long long> original_arc;
     };
     string name;
-	Side forward, backward;
+    Side forward, backward;
     Side forward_up, forward_down, backward_up, backward_down;
     vector<float> latitude, longitude;
     vector<int> order;
@@ -27,11 +30,12 @@ public:
     unordered_map<int, int> old_id;
     vector<bool> boundary_nodes;
     int node_count() { return count; };
-    void compute_boundary_node(vector<int> partition){
-        boundary_nodes.clear(); boundary_nodes.resize(count);
+    void compute_boundary_node(vector<int> partition) {
+        boundary_nodes.clear();
+        boundary_nodes.resize(count);
         assert(partition.size() == count);
         for (int x = 0; x < count; ++x) {
-            for (int arc = forward.first_out[x]; arc < forward.first_out[x+1]; ++arc) {
+            for (int arc = forward.first_out[x]; arc < forward.first_out[x + 1]; ++arc) {
                 int y = forward.head[arc];
                 if (partition[x] != partition[y]) {
                     boundary_nodes[x] = true;
@@ -187,7 +191,7 @@ int findCCs(Graph& graph) {
 
 Graph build_ch_complete_graph(string name, Graph& graph, ContractionHierarchy& ch, float best_percentage) {
     struct Info {
-        Info(unsigned _y, long long _arc, unsigned _weight): y{_y}, arc{_arc}, weight{_weight} {}
+        Info(unsigned _y, long long _arc, unsigned _weight) : y{_y}, arc{_arc}, weight{_weight} {}
         unsigned y;
         long long arc;
         unsigned weight;
@@ -254,7 +258,7 @@ void build_up_down_cores(Graph& g) {
 
         g.backward_up.first_out.push_back(g.backward_up.head.size());
         g.backward_down.first_out.push_back(g.backward_down.head.size());
-        
+
         for (int arc = g.forward.first_out[x]; arc < g.forward.first_out[x + 1]; ++arc) {
             int y = g.forward.head[arc];
             if (g.old_id[x] < g.old_id[y]) {
