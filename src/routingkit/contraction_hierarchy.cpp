@@ -1443,6 +1443,8 @@ ContractionHierarchyQuery&ContractionHierarchyQuery::reset(){
 	forward_queue.clear();
 	was_backward_pushed.reset_all();
 	backward_queue.clear();
+	S.clear(); T.clear(); 
+	C_S.clear(); C_T.clear();
 	shortest_path_meeting_node = invalid_id;
 	relaxed = 0;
 	visited = 0;
@@ -1559,7 +1561,6 @@ namespace{
 			bool skip = flags;
 			if (flags) {
 				for (int cell : core_cells) {
-					// std::cout << cell << " " << arc << " " << forward << std::endl;
 					if (edge_hashes.find(forward? arc : -(long long)arc) == edge_hashes.end()) continue;
 					if (hash_flags[edge_hashes[forward? arc : -(long long)arc]][forward? cell : cell + partition_size] == 1)
 						skip = false;
@@ -1619,7 +1620,7 @@ namespace{
 		auto p = forward_queue.pop();
 		auto popped_node = p.id;
 		auto distance_to_popped_node = p.key;
-		relaxed++;
+		++relaxed;
 
 		if(was_backward_pushed.is_set(popped_node)){
 			if(shortest_path_length > distance_to_popped_node + backward_tentative_distance[popped_node]){
@@ -1630,7 +1631,7 @@ namespace{
 		if (!flags && popped_node >= min_rank) {
 			core_entries.push_back(popped_node);
 		}
-		if(((flags && popped_node >= min_rank) || (!flags && (popped_node < min_rank || min_rank == invalid_id))) && (!stall ||
+		if((flags || (!flags && (popped_node < min_rank || min_rank == invalid_id))) && (!stall ||
 			!forward_can_stall_at_node(
 				popped_node,
 				backward_first_out, backward_head, backward_weight,
@@ -1691,7 +1692,6 @@ ContractionHierarchyQuery& ContractionHierarchyQuery::run_chase(unsigned min_ran
 	unsigned shortest_path_length = inf_weight;
 	shortest_path_meeting_node = invalid_id;
 
-	S.clear(); T.clear(); C_S.clear(); C_T.clear();
 	auto search = [&](bool stall = true, unsigned min_rank = 0, bool flags=false) {
 		bool forward_next = true;
 
@@ -1757,15 +1757,9 @@ ContractionHierarchyQuery& ContractionHierarchyQuery::run_chase(unsigned min_ran
 			}
 		}
 	};
+
 	// phase 1: pure ch query stopping at core
-	search(true, min_rank);
-	if ((S.empty() && T.empty()) || (S.size() == 1 && T.size() == 1 && S.front() == T.front())){
-		state = ContractionHierarchyQuery::InternalState::run;
-		return *this;
-	}
-	// phase 2: ch query from discovered core entry points aided by arc flags
-	forward_queue.clear();
-	backward_queue.clear();
+	search(false, min_rank);
 	
 	for (unsigned s : S) {
 		forward_queue.push({s, forward_tentative_distance[s]});
@@ -1777,6 +1771,12 @@ ContractionHierarchyQuery& ContractionHierarchyQuery::run_chase(unsigned min_ran
 		C_T.insert(partition[t]);
 		was_backward_pushed.set(t);
 	}
+
+	if ((S.empty() || T.empty()) || (forward_queue.peek().key >= shortest_path_length && backward_queue.peek().key >= shortest_path_length)){
+		state = ContractionHierarchyQuery::InternalState::run;
+		return *this;
+	}
+	// phase 2: ch query from discovered core entry points aided by arc flags
 	search(false, min_rank, true);
 	state = ContractionHierarchyQuery::InternalState::run;
 	return *this;

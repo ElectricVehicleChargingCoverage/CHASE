@@ -5,42 +5,10 @@
 #include <routingkit/id_queue.h>
 #include <routingkit/timestamp_flag.h>
 #include "stringutil.hpp"
+#include "graphutil.hpp"
 
 using namespace std;
 using namespace RoutingKit;
-
-struct Graph {
-private:
-    int count;
-public:
-    Graph(int _count, string _name=""): count{_count}, name{_name} {}
-    struct Side{
-        vector<unsigned>first_out;
-        vector<unsigned>head;
-        vector<unsigned>weight;
-        vector<long long>original_arc;
-    };
-    string name;
-	Side forward, backward;
-    Side forward_up, forward_down, backward_up, backward_down;
-    vector<float> latitude, longitude;
-    vector<int> order;
-    unordered_map<int, int> new_id;
-    unordered_map<int, int> old_id;
-    vector<bool> boundary_nodes;
-    int node_count() { return count; };
-    void compute_boundary_node(vector<int> partition){
-        boundary_nodes.clear(); boundary_nodes.resize(count);
-        assert(partition.size() == count);
-        for (int x = 0; x < count; ++x) {
-            for (int arc = forward.first_out[x]; arc < forward.first_out[x+1]; ++arc) {
-                int y = forward.head[arc];
-                if (partition[x] != partition[y])
-                    boundary_nodes[x] = true;
-            }
-        }
-    }
-};
 
 class ArcFlags {
 public:
