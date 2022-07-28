@@ -12,6 +12,8 @@
 using namespace std;
 using namespace RoutingKit;
 
+enum IMPORT_TYPE {SKARF, ARCFLAGS};
+
 class Skarf {
    public:
     Graph& g;
@@ -22,11 +24,11 @@ class Skarf {
     void mergeFlags(string folder);
     void compress(unordered_map<long long, boost::dynamic_bitset<>>& labels);
     void exportFlags(string folder);
-    void importFlags(string edges_path, string flags_path);
+    void importFlags(string edges_path, string flags_path, IMPORT_TYPE type);
     unordered_map<size_t, boost::dynamic_bitset<>> preprocessing_labels;
     unordered_map<long long, size_t> preprocessing_label_hash;
-    unordered_map<long long, size_t> label_hashes;
-    unordered_map<size_t, boost::dynamic_bitset<>> labels;
+    unordered_map<long long, size_t> label_hashes[2];
+    unordered_map<size_t, boost::dynamic_bitset<>> labels[2];
     bool precomputed = false;
 };
 
@@ -347,7 +349,7 @@ void Skarf::exportFlags(string folder) {
     outfile.write((const char*)&bytes[0], bytes.size());
 }
 
-void Skarf::importFlags(string edges_path, string flags_path) {
+void Skarf::importFlags(string edges_path, string flags_path, IMPORT_TYPE type) {
     ifstream input(flags_path, ios::binary);
     vector<unsigned char> buffer(istreambuf_iterator<char>(input), {});
     int rowByteSize = sizeof(size_t) + ceil(2 * partition_size / 8.0);
@@ -373,7 +375,7 @@ void Skarf::importFlags(string edges_path, string flags_path) {
             if (pos < rowByteSize - 1) {
                 flag <<= 8;
             } else
-                labels[key] = flag;
+                labels[type][key] = flag;
         }
     }
     ifstream file(edges_path);
@@ -384,12 +386,14 @@ void Skarf::importFlags(string edges_path, string flags_path) {
         vector<string> csv = split(line, ",", false);
         int edge_id = stoi(csv[0]);
         size_t key = stoul(csv[1]);
-        label_hashes[edge_id] = key;
+        label_hashes[type][edge_id] = key;
     }
     precomputed = true;
 }
 
 void Skarf::compress(unordered_map<long long, boost::dynamic_bitset<>>& labels) {
+    preprocessing_label_hash.clear();
+    preprocessing_labels.clear();
     hash<boost::dynamic_bitset<>> hash_f;
     for (auto& [edge, label] : labels) {
         size_t key = hash_f(label);

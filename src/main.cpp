@@ -138,13 +138,16 @@ int main(int argc, const char* argv[]) {
 
         g.compute_boundary_node(partition);
 
-        ArcFlags flags(g, partition, partition_size);
-        string import_file = "../flags/arcflags/" + g.name + "_" + to_string(partition_size);
+        // ArcFlags flags(g, partition, partition_size);
+        // string import_file = "../flags/arcflags/" + g.name + "_" + to_string(partition_size);
         // flags.mergeFlags("arcflags");
-        flags.importFlags(import_file + ".csv", import_file + ".bin");
+        // flags.importFlags(import_file + ".csv", import_file + ".bin");
         // flags.precompute(0, vm["partition"].as<int>());
 
-        start_experiments(vm["tries"].as<int>(), ch, g, flags, min_rank);
+        Skarf skarf(g, partition, partition_size);
+        skarf.precompute(0, vm["partition"].as<int>());
+
+        // start_experiments(vm["tries"].as<int>(), ch, g, flags, min_rank);
     } catch (const exception& ex) {
         cerr << ex.what() << endl;
     }
