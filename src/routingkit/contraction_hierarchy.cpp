@@ -1549,22 +1549,49 @@ namespace{
 		std::vector<unsigned>&forward_tentative_distance,
 		const SetPred&set_predecessor,
 		unsigned& visited,
-		const std::set<int>& core_cells,
-		std::unordered_map<long long, size_t>& edge_hashes,
-	 	std::unordered_map<size_t, boost::dynamic_bitset<>>& hash_flags,
+		const std::set<int>& start_cells, const std::set<int>& end_cells,
+		std::unordered_map<long long, size_t> (&edge_hashes)[2],
+	 	std::unordered_map<size_t, boost::dynamic_bitset<>> (&hash_flags)[2],
 		bool flags = false,
-		int partition_size = 0
+		int partition_size = 0,
+		bool skarf = false
 	){
 		for(unsigned arc = forward_first_out[node]; arc < forward_first_out[node+1]; ++arc){
 			visited++;
 			unsigned h = forward_head[arc], d = distance_to_node + forward_weight[arc];
 			bool skip = flags;
 			if (flags) {
-				for (int cell : core_cells) {
-					if (edge_hashes.find(forward? arc : -(long long)arc) == edge_hashes.end()) continue;
-					if (hash_flags[edge_hashes[forward? arc : -(long long)arc]][forward? cell : cell + partition_size] == 1){
-						skip = false;
-						break;
+				for (int cell : start_cells) {
+					if (forward){
+						if (edge_hashes[0].find(arc) == edge_hashes[0].end()) continue;
+						if (hash_flags[0][edge_hashes[0][arc]][cell] == 1) {
+							skip = false;
+							break;
+						}
+					}else{
+						if (edge_hashes[0].find(-(long long)arc) == edge_hashes[0].end()) continue;
+						if (hash_flags[0][edge_hashes[0][-(long long)arc]][cell + partition_size] == 1) {
+							skip = false;
+							break;
+						}
+					}
+				}
+				if (skarf && !skip) {
+					skip = true;
+					for (int cell : end_cells) {
+						if (forward){
+							if (edge_hashes[1].find(arc) == edge_hashes[1].end()) continue;
+							if (hash_flags[1][edge_hashes[1][arc]][cell + partition_size] == 1) {
+								skip = false;
+								break;
+							}
+						}else{
+							if (edge_hashes[1].find(-(long long)arc) == edge_hashes[1].end()) continue;
+							if (hash_flags[1][edge_hashes[1][-(long long)arc]][cell] == 1) {
+								skip = false;
+								break;
+							}
+						}
 					}
 				}
 			}
@@ -1612,12 +1639,13 @@ namespace{
 		std::vector<unsigned>&forward_tentative_distance, const std::vector<unsigned>&backward_tentative_distance,
 		std::vector<unsigned>&forward_predecessor_node, std::vector<unsigned>&forward_predecessor_arc,
 		unsigned& relaxed, unsigned& visited,
-		std::vector<unsigned>& core_entries, std::set<int>& core_cells,
-		std::unordered_map<long long, size_t>& edge_hashes, std::unordered_map<size_t, boost::dynamic_bitset<>>& hash_flags,
+		std::vector<unsigned>& core_entries, std::set<int>& start_cells, std::set<int>& end_cells,
+		std::unordered_map<long long, size_t> (&edge_hashes)[2], std::unordered_map<size_t, boost::dynamic_bitset<>> (&hash_flags)[2],
 		bool stall=true,
 		unsigned min_rank = invalid_id,
 		bool flags = false,
-		int partition_size = 0
+		int partition_size = 0,
+		bool skarf = false
 	){
 		auto p = forward_queue.pop();
 		auto popped_node = p.id;
@@ -1652,10 +1680,11 @@ namespace{
 					forward_predecessor_arc[x] = pred_arc;
 				},
 				visited,
-				core_cells,
+				start_cells, end_cells,
 				edge_hashes, hash_flags,
 				flags,
-				partition_size
+				partition_size,
+				skarf
 			);
 		}
 	}
@@ -1729,7 +1758,7 @@ ContractionHierarchyQuery& ContractionHierarchyQuery::run_chase(unsigned min_ran
 					forward_tentative_distance, backward_tentative_distance,
 					forward_predecessor_node, forward_predecessor_arc,
 					relaxed, visited,
-					S, C_T,
+					S, C_T, C_S,
 					edge_hashes, hash_flags,
 					stall,
 					min_rank,
@@ -1748,12 +1777,113 @@ ContractionHierarchyQuery& ContractionHierarchyQuery::run_chase(unsigned min_ran
 					backward_tentative_distance, forward_tentative_distance,
 					backward_predecessor_node, backward_predecessor_arc,
 					relaxed, visited,
-					T, C_S,
+					T, C_S, C_T,
 					edge_hashes, hash_flags,
 					stall,
 					min_rank,
 					flags,
 					partition_size
+				);
+				forward_next = true;
+			}
+		}
+	};
+
+	// phase 1: pure ch query stopping at core
+	search(false, min_rank);
+	
+	for (unsigned s : S) {
+		forward_queue.push({s, forward_tentative_distance[s]});
+		C_S.insert(partition[s]);
+		was_forward_pushed.set(s);
+	}
+	for (unsigned t : T) {
+		backward_queue.push({t, backward_tentative_distance[t]});
+		C_T.insert(partition[t]);
+		was_backward_pushed.set(t);
+	}
+
+	if ((S.empty() || T.empty()) || (forward_queue.peek().key >= shortest_path_length && backward_queue.peek().key >= shortest_path_length)){
+		state = ContractionHierarchyQuery::InternalState::run;
+		return *this;
+	}
+	// phase 2: ch query from discovered core entry points aided by arc flags
+	search(false, min_rank, true);
+	state = ContractionHierarchyQuery::InternalState::run;
+	return *this;
+}
+
+ContractionHierarchyQuery& ContractionHierarchyQuery::run_skeleton_chase(unsigned min_rank){
+	assert(ch && "query object must have an attached CH");
+	assert(!forward_queue.empty() && "must add at least one source before calling run");
+	assert(!backward_queue.empty() && "must add at least one target before calling run");
+	assert(state == ContractionHierarchyQuery::InternalState::initialized);
+
+	unsigned shortest_path_length = inf_weight;
+	shortest_path_meeting_node = invalid_id;
+
+	auto search = [&](bool stall = true, unsigned min_rank = 0, bool flags=false) {
+		bool forward_next = true;
+
+		for(;;){
+			bool forward_finished = false;
+			if(forward_queue.empty())
+				forward_finished = true;
+			else if(forward_queue.peek().key >= shortest_path_length)
+				forward_finished = true;
+
+			bool backward_finished = false;
+			if(backward_queue.empty())
+				backward_finished = true;
+			else if(backward_queue.peek().key >= shortest_path_length)
+				backward_finished = true;
+
+			if(forward_finished && backward_finished)
+				break;
+
+			if(forward_finished)
+				forward_next = false;
+			if(backward_finished)
+				forward_next = true;
+
+			if(forward_next){
+				forward_settle_node(
+					true,
+					shortest_path_length, shortest_path_meeting_node,
+					ch->forward.first_out, ch->forward.head, ch->forward.weight,
+					ch->backward.first_out, ch->backward.head, ch->backward.weight,
+					was_forward_pushed, was_backward_pushed,
+					forward_queue,
+					forward_tentative_distance, backward_tentative_distance,
+					forward_predecessor_node, forward_predecessor_arc,
+					relaxed, visited,
+					S, C_T, C_S,
+					edge_hashes, hash_flags,
+					stall,
+					min_rank,
+					flags,
+					partition_size,
+					flags
+				);
+				forward_next = false;
+			} else {
+				forward_settle_node(
+					false,
+					shortest_path_length, shortest_path_meeting_node,
+					ch->backward.first_out, ch->backward.head, ch->backward.weight,
+					ch->forward.first_out, ch->forward.head, ch->forward.weight,
+					was_backward_pushed, was_forward_pushed,
+					backward_queue,
+					backward_tentative_distance, forward_tentative_distance,
+					backward_predecessor_node, backward_predecessor_arc,
+					relaxed, visited,
+					T, C_S, C_T,
+					edge_hashes, hash_flags,
+					stall,
+					min_rank,
+					flags,
+					partition_size,
+					flags
 				);
 				forward_next = true;
 			}
@@ -1827,7 +1957,7 @@ ContractionHierarchyQuery& ContractionHierarchyQuery::run(){
 				forward_tentative_distance, backward_tentative_distance,
 				forward_predecessor_node, forward_predecessor_arc,
 				relaxed, visited,
-				S, C_T,
+				S, C_T, C_S,
 				edge_hashes, hash_flags
 			);
 			forward_next = false;
@@ -1842,7 +1972,7 @@ ContractionHierarchyQuery& ContractionHierarchyQuery::run(){
 				backward_tentative_distance, forward_tentative_distance,
 				backward_predecessor_node, backward_predecessor_arc,
 				relaxed, visited,
-				T, C_S,
+				T, C_S, C_T,
 				edge_hashes, hash_flags
 			);
 			forward_next = true;

@@ -12,7 +12,8 @@
 using namespace std;
 using namespace RoutingKit;
 
-enum IMPORT_TYPE {SKARF, ARCFLAGS};
+enum IMPORT_TYPE { ARCFLAGS,
+                   SKARF };
 
 class Skarf {
    public:
@@ -54,7 +55,8 @@ void Skarf::precompute(int start, int end) {
 
         MinIDQueue queue(g.node_count());
         TimestampFlags was_pushed(g.node_count());
-        queue.push({src, 0});
+        tentative_dist[src] = 0;
+        queue.push({src, tentative_dist[src]});
 
         while (!queue.empty()) {
             auto popped = queue.pop();
@@ -128,11 +130,11 @@ void Skarf::precompute(int start, int end) {
             } else {
                 s.pop();
                 for (unsigned w : children[v])
-                    reach[v] = max(reach[v], ingoing_weight[ingoing[w]] + reach[w]);
+                    reach[v] = max(reach[v], ingoing_weight[w] + reach[w]);
                 // set the flags
                 for (unsigned w : children[v]) {
                     // see also our skeleton definition for non-geometric-realisations
-                    if ((reach[w] + ingoing_weight[ingoing[w]]) > tentative_dist[v]) cell_maps_skarf[cell_idx][ingoing[w]] = true;
+                    if (reach[w] + ingoing_weight[w] > tentative_dist[v]) cell_maps_skarf[cell_idx][ingoing[w]] = true;
                 }
             }
         }
@@ -150,7 +152,8 @@ void Skarf::precompute(int start, int end) {
 
         MinIDQueue queue(g.node_count());
         TimestampFlags was_pushed(g.node_count());
-        queue.push({src, 0});
+        tentative_dist[src] = 0;
+        queue.push({src, tentative_dist[src]});
 
         while (!queue.empty()) {
             auto popped = queue.pop();
@@ -214,7 +217,9 @@ void Skarf::precompute(int start, int end) {
         vector<unsigned> visited(g.node_count(), false);
         stack<unsigned> s;
         s.emplace(src);
-
+        if(src == 115921){
+            int x = 3;
+        }
         while (!s.empty()) {
             auto v = s.top();
             if (!visited[v]) {
@@ -223,11 +228,21 @@ void Skarf::precompute(int start, int end) {
                 visited[v] = true;
             } else {
                 s.pop();
+                auto l = children[v];
+                if (v == 116136) {
+                    int y = 3;
+                }
                 for (unsigned w : children[v])
-                    reach[v] = max(reach[v], ingoing_weight[ingoing[w]] + reach[w]);
+                    reach[v] = max(reach[v], ingoing_weight[w] + reach[w]);
                 // set the flags
                 for (unsigned w : children[v]) {
-                    if ((reach[w] + ingoing_weight[ingoing[w]]) > tentative_dist[v]) cell_maps_skarf[cell_idx + partition_size][ingoing[w]] = true;
+                    unsigned s = reach[w];
+                    unsigned s2 = ingoing_weight[w];
+                    unsigned s3 = tentative_dist[v];
+                    if (w == 116164){
+                        int z = 3;
+                    }
+                    if (reach[w] + ingoing_weight[w] > tentative_dist[v]) cell_maps_skarf[cell_idx + partition_size][ingoing[w]] = true;
                 }
             }
         }
@@ -243,6 +258,9 @@ void Skarf::precompute(int start, int end) {
     auto precomputeCell = [&](int cell_idx) {
         sync_out.println("Start computation for cell ", cell_idx);
         for (int x = 0; x < g.node_count(); ++x) {
+            if (x == 18) {
+                int z = 3;
+            }
             if (partition[x] != cell_idx) continue;
             if (g.boundary_nodes[x]) {
                 markEdgesOnSptTo(x, cell_idx);
@@ -252,12 +270,14 @@ void Skarf::precompute(int start, int end) {
                 int y = g.forward.head[arc];
                 if (partition[y] == cell_idx) {
                     cell_maps_arc_flags[cell_idx + partition_size][g.forward.original_arc[arc]] = true;
+                    cell_maps_skarf[cell_idx + partition_size][g.forward.original_arc[arc]] = true;
                 }
             }
             for (int arc = g.backward.first_out[x]; arc < g.backward.first_out[x + 1]; ++arc) {
                 int y = g.backward.head[arc];
                 if (partition[y] == cell_idx) {
                     cell_maps_arc_flags[cell_idx][g.backward.original_arc[arc]] = true;
+                    cell_maps_skarf[cell_idx][g.backward.original_arc[arc]] = true;
                 }
             }
         }
@@ -322,12 +342,12 @@ void Skarf::exportFlags(string folder) {
 
     vector<byte> bytes;
     for (auto& [_key, label] : preprocessing_labels) {
-        long long key = _key;
+        size_t key = _key;
         boost::dynamic_bitset<> flag = label;
         bitset<64> key_bits(key_bits);
         vector<byte> keyBytes;
         for (int i = 0; i < sizeof(size_t); i++) {
-            byte nextByte{static_cast<int>(key & ((1 << 8) - 1))};
+            byte nextByte{static_cast<byte>(key & ((1 << 8) - 1))};
             keyBytes.push_back(nextByte);
             key >>= 8;
         }
@@ -338,7 +358,7 @@ void Skarf::exportFlags(string folder) {
         for (int i = 0; i < 2 * partition_size; i += 8) {
             boost::dynamic_bitset<> copy = flag;
             copy &= boost::dynamic_bitset<>(2 * partition_size, 255);
-            byte nextByte{static_cast<int>(copy.to_ulong())};
+            byte nextByte{static_cast<byte>(copy.to_ulong())};
             flagBytes.push_back(nextByte);
             flag >>= 8;
         }
@@ -350,6 +370,7 @@ void Skarf::exportFlags(string folder) {
 }
 
 void Skarf::importFlags(string edges_path, string flags_path, IMPORT_TYPE type) {
+    if (type == SKARF) cout << "location: " << flags_path << endl;
     ifstream input(flags_path, ios::binary);
     vector<unsigned char> buffer(istreambuf_iterator<char>(input), {});
     int rowByteSize = sizeof(size_t) + ceil(2 * partition_size / 8.0);
@@ -374,8 +395,9 @@ void Skarf::importFlags(string edges_path, string flags_path, IMPORT_TYPE type) 
             flag |= boost::dynamic_bitset<>(2 * partition_size, buffer[i]);
             if (pos < rowByteSize - 1) {
                 flag <<= 8;
-            } else
+            } else{
                 labels[type][key] = flag;
+            }
         }
     }
     ifstream file(edges_path);

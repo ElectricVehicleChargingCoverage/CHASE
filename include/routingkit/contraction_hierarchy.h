@@ -117,6 +117,7 @@ public:
 
 	ContractionHierarchyQuery&run();
 	ContractionHierarchyQuery&run_chase(unsigned min_rank);
+	ContractionHierarchyQuery&run_skeleton_chase(unsigned min_rank);
 
 	unsigned get_used_source();
 	unsigned get_used_target();
@@ -219,8 +220,8 @@ public:
 
 	std::vector<int> partition;
 	int partition_size;
-	std::unordered_map<long long, size_t> edge_hashes;
-	std::unordered_map<size_t, boost::dynamic_bitset<>> hash_flags;
+	std::unordered_map<long long, size_t> edge_hashes[2];
+	std::unordered_map<size_t, boost::dynamic_bitset<>> hash_flags[2];
 
 	enum class InternalState:unsigned{
 		initialized,

@@ -78,6 +78,6 @@
         "*.ipp": "cpp"
     },
     "cmake.debugConfig": {
-        "args": ["-g", "../data/niedersachsen", "-c", "0.25", "-p", "100"]
+        "args": ["-g", "niedersachsen", "-c", "0.25", "-p", "100"]
     }
 }

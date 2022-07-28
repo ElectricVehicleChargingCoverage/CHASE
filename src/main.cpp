@@ -10,19 +10,191 @@
 using namespace std;
 using namespace RoutingKit;
 
-void start_experiments(int tries, ContractionHierarchy& ch, Graph& g, ArcFlags& flags, unsigned min_rank) {
-    ContractionHierarchyQuery query(ch);
-    vector<int> parts(ch.node_count(), -1);
-    for (int i = 0; i < ch.node_count(); ++i) {
-        if (g.new_id.find(i) != g.new_id.end()) {
-            parts[i] = flags.partition[g.new_id[i]];
+void find_shortest_path_backwards(Graph& g, unsigned src, unsigned trgt, int cell_idx, Skarf& flags, ContractionHierarchy& ch) {
+    vector<unsigned> tentative_dist(g.node_count(), inf_weight);
+    vector<bool> down(g.node_count(), false);
+    vector<bool> pop(g.node_count(), false);
+    vector<long long> pred(g.node_count(), -1);
+    vector<int> pred_n(g.node_count(), -1);
+
+    MinIDQueue queue(g.node_count());
+    TimestampFlags was_pushed(g.node_count());
+    queue.push({trgt, 0});
+
+    while (!queue.empty()) {
+        auto popped = queue.pop();
+        int v = popped.id;
+        pop[v] = true;
+        auto distance_to_popped_node = popped.key;
+        if (v == src) {
+            break;
+        }
+        if (v == trgt || !down[v]){
+            for (int arc = g.backward_up.first_out[v]; arc < g.backward_up.first_out[v+1]; ++arc) {
+                unsigned u = g.backward_up.head[arc];
+                if (pop[u]) continue;
+                unsigned d = distance_to_popped_node + g.backward_up.weight[arc];
+
+                long long orig_arc = g.backward_up.original_arc[arc];
+                unsigned w = (orig_arc >= 0)? ch.forward.weight[(unsigned)orig_arc] : ch.backward.weight[-(unsigned)orig_arc];
+                assert(g.backward_up.weight[arc] == w);
+
+                if(was_pushed.is_set(u)){
+                    if (d < tentative_dist[u]) {
+                        pred[u] = g.backward_up.original_arc[arc];
+                        pred_n[u] = v;
+                        down[u] = false;
+                        queue.decrease_key({u, d});
+                        tentative_dist[u] = d;
+                    }
+                }else if(d < inf_weight){
+                    pred[u] = g.backward_up.original_arc[arc];
+                    pred_n[u] = v;
+                    down[u] = false;
+                    was_pushed.set(u);
+                    queue.push({u, d});
+                    tentative_dist[u] = d;
+                }
+            }
+        }
+        for (int arc = g.backward_down.first_out[v]; arc < g.backward_down.first_out[v+1]; ++arc) {
+            unsigned u = g.backward_down.head[arc];
+            if (pop[u]) continue;
+            unsigned d = distance_to_popped_node + g.backward_down.weight[arc];
+
+            long long orig_arc = g.backward_down.original_arc[arc];
+            unsigned w = (orig_arc >= 0)? ch.forward.weight[(unsigned)orig_arc] : ch.backward.weight[-(unsigned)orig_arc];
+            assert(g.backward_down.weight[arc] == w);
+
+            if(was_pushed.is_set(u)){
+                if (d < tentative_dist[u]) {
+                    pred[u] = g.backward_down.original_arc[arc];
+                    pred_n[u] = v;
+                    down[u] = true;
+                    queue.decrease_key({u, d});
+                    tentative_dist[u] = d;
+                }
+            }else if(d < inf_weight){
+                pred[u] = g.backward_down.original_arc[arc];
+                pred_n[u] = v;
+                down[u] = true;
+                was_pushed.set(u);
+                tentative_dist[u] = d;
+                queue.push({u, d});
+            }
         }
     }
-    query.partition = parts;
-    query.partition_size = flags.partition_size;
-    query.edge_hashes = flags.label_hashes;
-    query.hash_flags = flags.labels;
+    cout << "dist: " << tentative_dist[src] << endl;
+    list<long long> path;
+    int x = src;
+    while (pred_n[x] != -1) {
+        long long arc = pred[x];
+        // if (flags.partition[x] == cell_idx) cout << "bn: " << x << " " << arc << " bn:" << g.boundary_nodes[x] << endl;
+        cout << "x: " << x << " " << flags.partition[x] << " " << g.boundary_nodes[x] << endl;
+        path.push_back(pred[x]);
+        x = pred_n[x];
+    }
+    cout << "----- arc path ---------" << endl;
+    auto tail_f = invert_inverse_vector(ch.forward.first_out);
+    auto tail_b = invert_inverse_vector(ch.backward.first_out);
+    for (long long arc : path) {
+        unsigned x,y,w;
+        if (arc >= 0){
+            w = ch.forward.weight[(unsigned)arc];
+            x = g.new_id[tail_f[(unsigned)arc]];
+            y = g.new_id[ch.forward.head[(unsigned)arc]];
+        }else {
+            w = ch.backward.weight[(unsigned)(-arc)];
+            y = g.new_id[tail_b[(unsigned)(-arc)]];
+            x = g.new_id[ch.backward.head[(unsigned)(-arc)]];
+        }
+        // unsigned w = (arc >= 0)? ch.forward.weight[(unsigned)arc] : ch.backward.weight[-(unsigned)arc];
+        cout << arc << " " << w << ": " << x << "[" << flags.partition[x] << "] " << y << "[" << flags.partition[y] << "]" << endl;
+    }
+}
 
+void find_shortest_path(Graph& g, unsigned src, unsigned trgt, int cell_idx, Skarf& flags) {
+    vector<unsigned> tentative_dist(g.node_count(), inf_weight);
+    vector<bool> down(g.node_count(), false);
+    vector<bool> pop(g.node_count(), false);
+    vector<long long> pred(g.node_count(), -1);
+    vector<unsigned> pred_n(g.node_count(), -1);
+
+    MinIDQueue queue(g.node_count());
+    TimestampFlags was_pushed(g.node_count());
+    queue.push({src, 0});
+    
+    while (!queue.empty()) {
+        auto popped = queue.pop();
+        int v = popped.id;
+        pop[v] = true;
+        auto distance_to_popped_node = popped.key;
+        if (v == trgt) {
+            break;
+        }
+        if (v == src || !down[v]){
+            for (int arc = g.forward_up.first_out[v]; arc < g.forward_up.first_out[v+1]; ++arc) {
+                // if (flags.labels[flags.label_hashes[g.forward_up.original_arc[arc]]][cell_idx] == 0) continue;
+                unsigned u = g.forward_up.head[arc]; 
+                if (pop[u]) continue;
+                unsigned d = distance_to_popped_node + g.forward_up.weight[arc];
+                if(was_pushed.is_set(u)){
+                    if (d < tentative_dist[u]) {
+                        pred[u] = g.forward_up.original_arc[arc];
+                        pred_n[u] = v;
+                        down[u] = false;
+                        queue.decrease_key({u, d});
+                        tentative_dist[u] = d;
+                    }
+                }else if(d < inf_weight){
+                    pred[u] = g.forward_up.original_arc[arc];
+                    pred_n[u] = v;
+                    down[u] = false;
+                    was_pushed.set(u);
+                    queue.push({u, d});
+                    tentative_dist[u] = d;
+                }
+            }
+        }
+        for (int arc = g.forward_down.first_out[v]; arc < g.forward_down.first_out[v+1]; ++arc) {
+            unsigned u = g.forward_down.head[arc];
+            if (pop[u]) continue;
+            unsigned d = distance_to_popped_node + g.forward_down.weight[arc];
+            if(was_pushed.is_set(u)){
+                if (d < tentative_dist[u]) {
+                    pred[u] = g.forward_down.original_arc[arc];
+                    pred_n[u] = v;
+                    down[u] = true;
+                    queue.decrease_key({u, d});
+                    tentative_dist[u] = d;
+                }
+            }else if(d < inf_weight){
+                pred[u] = g.forward_down.original_arc[arc];
+                pred_n[u] = v;
+                down[u] = true;
+                was_pushed.set(u);
+                queue.push({u, d});
+                tentative_dist[u] = d;
+            }
+        }
+    }
+    cout << tentative_dist[trgt] << endl;
+    list<long long> path;
+    int x = trgt;
+    while (pred_n[x] != -1) {
+        if (flags.partition[x] == cell_idx && g.boundary_nodes[x]) cout << "bn: " << x << endl;
+        cout << "x: " << x << endl;
+        long long arc = pred[x];
+        path.push_front(pred[x]);
+        x = pred_n[x];
+    }
+    cout << "----- arc path ---------" << endl;
+    for (long long arc : path) {
+        cout << arc << endl;
+    }
+}
+
+void start_experiments(int tries, ContractionHierarchy& ch, Graph& g, ContractionHierarchyQuery& query, unsigned min_rank, Skarf& skarf) {
     // run test queries
     string seed_str = "very_random_seed";
     seed_seq seed(seed_str.begin(), seed_str.end());
@@ -66,7 +238,8 @@ void start_experiments(int tries, ContractionHierarchy& ch, Graph& g, ArcFlags& 
         auto [x, y] = routes[i];
         query.reset().add_source(x).add_target(y);
         auto start = chrono::high_resolution_clock::now();
-        query.run_chase(min_rank);
+        // query.run_chase(min_rank);
+        query.run_skeleton_chase(min_rank);
         auto finish = chrono::high_resolution_clock::now();
 
         chase_time[i] = chrono::duration_cast<chrono::nanoseconds>(finish - start).count();
@@ -76,6 +249,11 @@ void start_experiments(int tries, ContractionHierarchy& ch, Graph& g, ArcFlags& 
         if (chase_distances[i] != ch_distances[i]) f++;
         cout << "[" << ((chase_distances[i] == ch_distances[i])? "PASS" : "FAIL") << "] " << i + 1 << "/" << tries << endl;
         out << (chase_distances[i] == ch_distances[i]) << "," << chase_distances[i] << "," << ch_distances[i] << "," << metric_ch[i].first << "," << query.relaxed << "," << metric_ch[i].second << "," << query.visited << "," << ch_time[i] << "," << chase_time[i] << endl;
+
+        if (i == 25) {
+            find_shortest_path_backwards(g, g.new_id[ch.rank[x]], g.new_id[ch.rank[y]], 0, skarf, ch);
+            find_shortest_path(g, 115921, g.new_id[ch.rank[y]], 0, skarf);
+        }
     }
     cout << "failed: " << f << endl;
     out.close();
@@ -112,7 +290,6 @@ int main(int argc, const char* argv[]) {
 
         vector<string> csv = split(input_path, "/", false);
         string name = csv.back() + "_core_" + to_string(core);
-        cout << "name: " << name << endl;
 
         // Build the shortest path index
         cout << "start building contraction hierarchy" << endl;
@@ -140,14 +317,33 @@ int main(int argc, const char* argv[]) {
 
         // ArcFlags flags(g, partition, partition_size);
         // string import_file = "../flags/arcflags/" + g.name + "_" + to_string(partition_size);
-        // flags.mergeFlags("arcflags");
+        // // flags.mergeFlags("arcflags");
         // flags.importFlags(import_file + ".csv", import_file + ".bin");
         // flags.precompute(0, vm["partition"].as<int>());
 
         Skarf skarf(g, partition, partition_size);
-        skarf.precompute(0, vm["partition"].as<int>());
+        skarf.precompute(18,19);
+        // string import_file_arcflags = "../flags/arcflags/" + g.name + "_" + to_string(partition_size);
+        // string import_file_skarf = "../flags/skarf/" + g.name + "_" + to_string(partition_size);
+        // // skarf.precompute(0, vm["partition"].as<int>());
+        // skarf.importFlags(import_file_arcflags + ".csv", import_file_arcflags + ".bin", IMPORT_TYPE::ARCFLAGS);
+        // skarf.importFlags(import_file_skarf + ".csv", import_file_skarf + ".bin", IMPORT_TYPE::SKARF);
 
-        // start_experiments(vm["tries"].as<int>(), ch, g, flags, min_rank);
+        // ContractionHierarchyQuery query(ch);
+        // vector<int> parts(ch.node_count(), -1);
+        // for (int i = 0; i < ch.node_count(); ++i) {
+        //     if (g.new_id.find(i) != g.new_id.end()) {
+        //         parts[i] = skarf.partition[g.new_id[i]];
+        //     }
+        // }
+        // query.partition = parts;
+        // query.partition_size = partition_size;
+        // query.edge_hashes[0] = skarf.label_hashes[0];
+        // query.hash_flags[0] = skarf.labels[0];
+        // query.edge_hashes[1] = skarf.label_hashes[1];
+        // query.hash_flags[1] = skarf.labels[1];
+        
+        // start_experiments(vm["tries"].as<int>(), ch, g, query, min_rank, skarf);
     } catch (const exception& ex) {
         cerr << ex.what() << endl;
     }
