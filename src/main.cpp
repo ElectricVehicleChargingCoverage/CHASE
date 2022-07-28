@@ -131,7 +131,7 @@ int main(int argc, const char* argv[]) {
         cout << "start partition: " << g.node_count() << " nodes, " << g.forward.head.size() << " edges" << endl;
         int partition_size = vm["partition"].as<int>();
         string partition_location = input_path + "/" + name + "_" + to_string(partition_size) + ".part";
-        cout << "read partition: " << boost::filesystem::exists(partition_location)  << endl;
+        
         auto partition = boost::filesystem::exists(partition_location) ? read_partition(partition_location) : partition_graph(g, vm["partition"].as<int>(), core);
         if (!boost::filesystem::exists(partition_location))
             export_partition(partition, partition_location);
