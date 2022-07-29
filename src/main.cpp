@@ -232,8 +232,8 @@ void start_experiments(int tries, ContractionHierarchy& ch, Graph& g, Contractio
         query.run();
         auto finish = chrono::high_resolution_clock::now();
 
-        edges[i] = query.get_path().size();
         ch_time[i] = chrono::duration_cast<chrono::nanoseconds>(finish - start).count();
+        edges[i] = query.get_path().size();
         ch_distances[i] = query.get_distance();
         metric_ch[i] = make_pair(query.relaxed, query.visited);
     }
