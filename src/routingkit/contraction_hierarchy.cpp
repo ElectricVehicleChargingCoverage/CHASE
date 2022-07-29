@@ -1550,11 +1550,12 @@ namespace{
 		const SetPred&set_predecessor,
 		unsigned& visited,
 		const std::set<int>& start_cells, const std::set<int>& end_cells,
-		std::unordered_map<long long, size_t> (&edge_hashes)[2],
-	 	std::unordered_map<size_t, boost::dynamic_bitset<>> (&hash_flags)[2],
+		std::vector<size_t> (&edge_hashes)[2],
+	 	std::vector<boost::dynamic_bitset<>> (&hash_flags)[2],
 		bool flags = false,
 		int partition_size = 0,
-		bool skarf = false
+		bool skarf = false,
+		int edge_offset = 0
 	){
 		for(unsigned arc = forward_first_out[node]; arc < forward_first_out[node+1]; ++arc){
 			visited++;
@@ -1563,37 +1564,58 @@ namespace{
 			if (flags) {
 				for (int cell : start_cells) {
 					if (forward){
-						if (edge_hashes[0].find(arc) == edge_hashes[0].end()) continue;
-						if (hash_flags[0][edge_hashes[0][arc]][cell] == 1) {
+						if (edge_hashes[0][edge_offset + arc] == invalid_id) continue;
+						if (hash_flags[0][edge_hashes[0][edge_offset + arc]][cell] == 1) {
 							skip = false;
 							break;
 						}
 					}else{
-						if (edge_hashes[0].find(-(long long)arc) == edge_hashes[0].end()) continue;
-						if (hash_flags[0][edge_hashes[0][-(long long)arc]][cell + partition_size] == 1) {
+						if (edge_hashes[0][arc] == invalid_id) continue;
+						if (hash_flags[0][edge_hashes[0][arc]][cell + partition_size] == 1) {
 							skip = false;
 							break;
 						}
 					}
 				}
-				if (skarf && !skip) {
-					skip = true;
-					for (int cell : end_cells) {
-						if (forward){
-							if (edge_hashes[1].find(arc) == edge_hashes[1].end()) continue;
-							if (hash_flags[1][edge_hashes[1][arc]][cell + partition_size] == 1) {
-								skip = false;
-								break;
-							}
-						}else{
-							if (edge_hashes[1].find(-(long long)arc) == edge_hashes[1].end()) continue;
-							if (hash_flags[1][edge_hashes[1][-(long long)arc]][cell] == 1) {
-								skip = false;
-								break;
-							}
-						}
-					}
-				}
+				// if (skarf && !skip) {
+				// 	skip = true;
+				// 	for (int cell : end_cells) {
+				// 		if (forward){
+				// 			// if (edge_hashes[1].find(arc) == edge_hashes[1].end()) continue;
+				// 			if (edge_hashes[1][edge_offset + arc] == invalid_id) continue;
+				// 			if (hash_flags[1][edge_hashes[1][edge_offset + arc]][cell + partition_size] == 1) {
+				// 				skip = false;
+				// 				break;
+				// 			}
+				// 		}else{
+				// 			// if (edge_hashes[1].find(-(long long)arc) == edge_hashes[1].end()) continue;
+				// 			if (edge_hashes[1][arc] == invalid_id) continue;
+				// 			if (hash_flags[1][edge_hashes[1][arc]][cell] == 1) {
+				// 				skip = false;
+				// 				break;
+				// 			}
+				// 		}
+				// 	}
+				// 	if (skip) {
+				// 		for (int cell : start_cells) {
+				// 			if (forward){
+				// 				// if (edge_hashes[1].find(arc) == edge_hashes[1].end()) continue;
+				// 				if (edge_hashes[1][edge_offset + arc] == invalid_id) continue;
+				// 				if (hash_flags[1][edge_hashes[1][edge_offset + arc]][cell] == 1) {
+				// 					skip = false;
+				// 					break;
+				// 				}
+				// 			}else{
+				// 				// if (edge_hashes[1].find(-(long long)arc) == edge_hashes[1].end()) continue;
+				// 				if (edge_hashes[1][arc] == invalid_id) continue;
+				// 				if (hash_flags[1][edge_hashes[1][arc]][cell + partition_size] == 1) {
+				// 					skip = false;
+				// 					break;
+				// 				}
+				// 			}
+				// 		}
+				// 	}
+				// }
 			}
 			if (skip) continue;
 			if(was_forward_pushed.is_set(h)){
@@ -1640,11 +1662,12 @@ namespace{
 		std::vector<unsigned>&forward_predecessor_node, std::vector<unsigned>&forward_predecessor_arc,
 		unsigned& relaxed, unsigned& visited,
 		std::vector<unsigned>& core_entries, std::set<int>& start_cells, std::set<int>& end_cells,
-		std::unordered_map<long long, size_t> (&edge_hashes)[2], std::unordered_map<size_t, boost::dynamic_bitset<>> (&hash_flags)[2],
+		std::vector<size_t> (&edge_hashes)[2], std::vector<boost::dynamic_bitset<>> (&hash_flags)[2],
 		bool stall=true,
 		unsigned min_rank = invalid_id,
 		bool flags = false,
 		int partition_size = 0,
+		int edge_offset = 0,
 		bool skarf = false
 	){
 		auto p = forward_queue.pop();
@@ -1684,7 +1707,8 @@ namespace{
 				edge_hashes, hash_flags,
 				flags,
 				partition_size,
-				skarf
+				skarf,
+				edge_offset
 			);
 		}
 	}
@@ -1763,7 +1787,8 @@ ContractionHierarchyQuery& ContractionHierarchyQuery::run_chase(unsigned min_ran
 					stall,
 					min_rank,
 					flags,
-					partition_size
+					partition_size,
+					ch->backward.head.size()
 				);
 				forward_next = false;
 			} else {
@@ -1782,7 +1807,8 @@ ContractionHierarchyQuery& ContractionHierarchyQuery::run_chase(unsigned min_ran
 					stall,
 					min_rank,
 					flags,
-					partition_size
+					partition_size,
+					ch->backward.head.size()
 				);
 				forward_next = true;
 			}
@@ -1863,6 +1889,7 @@ ContractionHierarchyQuery& ContractionHierarchyQuery::run_skeleton_chase(unsigne
 					min_rank,
 					flags,
 					partition_size,
+					ch->backward.head.size(),
 					flags
 				);
 				forward_next = false;
@@ -1883,6 +1910,7 @@ ContractionHierarchyQuery& ContractionHierarchyQuery::run_skeleton_chase(unsigne
 					min_rank,
 					flags,
 					partition_size,
+					ch->backward.head.size(),
 					flags
 				);
 				forward_next = true;

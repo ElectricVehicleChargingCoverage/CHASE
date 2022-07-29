@@ -18,9 +18,10 @@ enum IMPORT_TYPE { ARCFLAGS,
 class Skarf {
    public:
     Graph& g;
+    ContractionHierarchy& ch;
     vector<int> partition;
     int partition_size;
-    Skarf(Graph& _g, vector<int>& _partition, int _partition_size) : g{_g}, partition{_partition}, partition_size{_partition_size} {};
+    Skarf(Graph& _g, ContractionHierarchy& _ch, vector<int>& _partition, int _partition_size) : g{_g}, ch{_ch}, partition{_partition}, partition_size{_partition_size} {};
     void precompute(int start, int end);
     void mergeFlags(string folder);
     void compress(unordered_map<long long, boost::dynamic_bitset<>>& labels);
@@ -28,8 +29,8 @@ class Skarf {
     void importFlags(string edges_path, string flags_path, IMPORT_TYPE type);
     unordered_map<size_t, boost::dynamic_bitset<>> preprocessing_labels;
     unordered_map<long long, size_t> preprocessing_label_hash;
-    unordered_map<long long, size_t> label_hashes[2];
-    unordered_map<size_t, boost::dynamic_bitset<>> labels[2];
+    vector<size_t> label_hashes[2];
+    vector<boost::dynamic_bitset<>> labels[2];
     bool precomputed = false;
 };
 
@@ -39,16 +40,15 @@ void Skarf::precompute(int start, int end) {
     unordered_map<long long, bool> cell_maps_arc_flags[2 * partition_size];
     unordered_map<long long, bool> cell_maps_skarf[2 * partition_size];
 
-    using QueueElement = pair<int, double>;
-    auto cmp = [](QueueElement& a, QueueElement& b) {
-        return a.second > b.second;
-    };
     auto markEdgesOnSptTo = [&](unsigned src, int cell_idx) {
         vector<unsigned> tentative_dist(g.node_count(), inf_weight);
         vector<bool> down(g.node_count(), false);
         vector<bool> pop(g.node_count(), false);
+        vector<unsigned> pred(g.node_count(), invalid_id);
         vector<long long> ingoing(g.node_count(), numeric_limits<long long>::max());
         vector<unsigned> ingoing_weight(g.node_count(), 0);
+        vector<vector<unsigned>> children(g.node_count());
+        vector<unsigned> reach(g.node_count(), 0);
 
         MinIDQueue queue(g.node_count());
         TimestampFlags was_pushed(g.node_count());
@@ -61,8 +61,9 @@ void Skarf::precompute(int start, int end) {
             pop[v] = true;
             auto distance_to_popped_node = popped.key;
             if (ingoing[v] != numeric_limits<long long>::max()) {
-                if (ingoing[v] < 0) cell_maps_skarf[cell_idx][ingoing[v]] = true;
-                cell_maps_arc_flags[cell_idx][ingoing[v]] = true;
+                children[pred[v]].push_back(v);
+                if (ingoing[v] >= 0)
+                    cell_maps_arc_flags[cell_idx][ingoing[v]] = true;
             }
             if (v == src || !down[v]) {
                 for (int arc = g.backward_up.first_out[v]; arc < g.backward_up.first_out[v + 1]; ++arc) {
@@ -73,6 +74,7 @@ void Skarf::precompute(int start, int end) {
                         if (d < tentative_dist[u]) {
                             ingoing[u] = g.backward_up.original_arc[arc];
                             ingoing_weight[u] = g.backward_up.weight[arc];
+                            pred[u] = v;
                             down[u] = false;
                             queue.decrease_key({u, d});
                             tentative_dist[u] = d;
@@ -80,6 +82,7 @@ void Skarf::precompute(int start, int end) {
                     } else if (d < inf_weight) {
                         ingoing[u] = g.backward_up.original_arc[arc];
                         ingoing_weight[u] = g.backward_up.weight[arc];
+                        pred[u] = v;
                         down[u] = false;
                         was_pushed.set(u);
                         queue.push({u, d});
@@ -95,6 +98,7 @@ void Skarf::precompute(int start, int end) {
                     if (d < tentative_dist[u]) {
                         ingoing[u] = g.backward_down.original_arc[arc];
                         ingoing_weight[u] = g.backward_down.weight[arc];
+                        pred[u] = v;
                         down[u] = true;
                         queue.decrease_key({u, d});
                         tentative_dist[u] = d;
@@ -102,10 +106,35 @@ void Skarf::precompute(int start, int end) {
                 } else if (d < inf_weight) {
                     ingoing[u] = g.backward_down.original_arc[arc];
                     ingoing_weight[u] = g.backward_down.weight[arc];
+                    pred[u] = v;
                     down[u] = true;
                     was_pushed.set(u);
                     tentative_dist[u] = d;
                     queue.push({u, d});
+                }
+            }
+        }
+
+        vector<unsigned> visited(g.node_count(), false);
+        stack<unsigned> s;
+        s.emplace(src);
+
+        while (!s.empty()) {
+            auto v = s.top();
+            if (!visited[v]) {
+                for (unsigned w : children[v])
+                    s.emplace(w);
+                visited[v] = true;
+            } else {
+                s.pop();
+                for (unsigned w : children[v]) {
+                    reach[v] = max(reach[v], ingoing_weight[w] + reach[w]);
+                }
+                // set the flags
+                for (unsigned w : children[v]) {
+                    // see also our skeleton definition for non-geometric-realisations
+                    if (reach[w] + ingoing_weight[w] > tentative_dist[v])
+                        cell_maps_skarf[cell_idx][ingoing[w]] = true;
                 }
             }
         }
@@ -115,8 +144,11 @@ void Skarf::precompute(int start, int end) {
         vector<unsigned> tentative_dist(g.node_count(), inf_weight);
         vector<bool> down(g.node_count(), false);
         vector<bool> pop(g.node_count(), false);
+        vector<unsigned> pred(g.node_count(), invalid_id);
         vector<long long> ingoing(g.node_count(), numeric_limits<long long>::max());
         vector<unsigned> ingoing_weight(g.node_count(), 0);
+        vector<vector<unsigned>> children(g.node_count());
+        vector<unsigned> reach(g.node_count(), 0);
 
         MinIDQueue queue(g.node_count());
         TimestampFlags was_pushed(g.node_count());
@@ -129,8 +161,9 @@ void Skarf::precompute(int start, int end) {
             pop[v] = true;
             auto distance_to_popped_node = popped.key;
             if (ingoing[v] != numeric_limits<long long>::max()) {
-                if (ingoing[v] >= 0) cell_maps_skarf[cell_idx + partition_size][ingoing[v]] = true;
-                cell_maps_arc_flags[cell_idx + partition_size][ingoing[v]] = true;
+                children[pred[v]].push_back(v);
+                if (ingoing[v] < 0)
+                    cell_maps_arc_flags[cell_idx + partition_size][ingoing[v]] = true;
             }
             if (v == src || !down[v]) {
                 for (int arc = g.forward_up.first_out[v]; arc < g.forward_up.first_out[v + 1]; ++arc) {
@@ -141,6 +174,7 @@ void Skarf::precompute(int start, int end) {
                         if (d < tentative_dist[u]) {
                             ingoing[u] = g.forward_up.original_arc[arc];
                             ingoing_weight[u] = g.forward_up.weight[arc];
+                            pred[u] = v;
                             down[u] = false;
                             queue.decrease_key({u, d});
                             tentative_dist[u] = d;
@@ -148,6 +182,7 @@ void Skarf::precompute(int start, int end) {
                     } else if (d < inf_weight) {
                         ingoing[u] = g.forward_up.original_arc[arc];
                         ingoing_weight[u] = g.forward_up.weight[arc];
+                        pred[u] = v;
                         down[u] = false;
                         was_pushed.set(u);
                         queue.push({u, d});
@@ -163,6 +198,7 @@ void Skarf::precompute(int start, int end) {
                     if (d < tentative_dist[u]) {
                         ingoing[u] = g.forward_down.original_arc[arc];
                         ingoing_weight[u] = g.forward_down.weight[arc];
+                        pred[u] = v;
                         down[u] = true;
                         queue.decrease_key({u, d});
                         tentative_dist[u] = d;
@@ -170,10 +206,34 @@ void Skarf::precompute(int start, int end) {
                 } else if (d < inf_weight) {
                     ingoing[u] = g.forward_down.original_arc[arc];
                     ingoing_weight[u] = g.forward_down.weight[arc];
+                    pred[u] = v;
                     down[u] = true;
                     was_pushed.set(u);
                     queue.push({u, d});
                     tentative_dist[u] = d;
+                }
+            }
+        }
+
+        vector<unsigned> visited(g.node_count(), false);
+        stack<unsigned> s;
+        s.emplace(src);
+
+        while (!s.empty()) {
+            auto v = s.top();
+            if (!visited[v]) {
+                for (unsigned w : children[v])
+                    s.emplace(w);
+                visited[v] = true;
+            } else {
+                s.pop();
+                for (unsigned w : children[v]) {
+                    reach[v] = max(reach[v], ingoing_weight[w] + reach[w]);
+                }
+                // set the flags
+                for (unsigned w : children[v]) {
+                    if (reach[w] + ingoing_weight[w] > tentative_dist[v])
+                        cell_maps_skarf[cell_idx + partition_size][ingoing[w]] = true;
                 }
             }
         }
@@ -301,7 +361,21 @@ void Skarf::exportFlags(string folder) {
 }
 
 void Skarf::importFlags(string edges_path, string flags_path, IMPORT_TYPE type) {
-    if (type == SKARF) cout << "location: " << flags_path << endl;
+    ifstream file(edges_path);
+    string line;
+    getline(file, line);  // skip first line
+    vector<string> lines;
+    size_t max_key = 0;
+    label_hashes[type].assign(ch.backward.head.size() + ch.forward.head.size(), invalid_id);
+    while (getline(file, line)) {
+        vector<string> csv = split(line, ",", false);
+        long long edge_id = stoi(csv[0]);
+        size_t key = stoul(csv[1]);
+        if (key > max_key) max_key = key;
+        label_hashes[type][(edge_id >= 0) ? edge_id + ch.backward.head.size() : -edge_id] = key;
+    }
+
+    labels[type].resize(max_key + 1);
     ifstream input(flags_path, ios::binary);
     vector<unsigned char> buffer(istreambuf_iterator<char>(input), {});
     int rowByteSize = sizeof(size_t) + ceil(2 * partition_size / 8.0);
@@ -326,20 +400,10 @@ void Skarf::importFlags(string edges_path, string flags_path, IMPORT_TYPE type) 
             flag |= boost::dynamic_bitset<>(2 * partition_size, buffer[i]);
             if (pos < rowByteSize - 1) {
                 flag <<= 8;
-            } else{
+            } else {
                 labels[type][key] = flag;
             }
         }
-    }
-    ifstream file(edges_path);
-    string line;
-    getline(file, line);  // skip first line
-    vector<string> lines;
-    while (getline(file, line)) {
-        vector<string> csv = split(line, ",", false);
-        int edge_id = stoi(csv[0]);
-        size_t key = stoul(csv[1]);
-        label_hashes[type][edge_id] = key;
     }
     precomputed = true;
 }
@@ -347,14 +411,25 @@ void Skarf::importFlags(string edges_path, string flags_path, IMPORT_TYPE type) 
 void Skarf::compress(unordered_map<long long, boost::dynamic_bitset<>>& labels) {
     preprocessing_label_hash.clear();
     preprocessing_labels.clear();
+    unordered_map<size_t, boost::dynamic_bitset<>> temp_labels;
     hash<boost::dynamic_bitset<>> hash_f;
     for (auto& [edge, label] : labels) {
         size_t key = hash_f(label);
-        if (preprocessing_labels.find(key) != preprocessing_labels.end()) {
-            if (label != preprocessing_labels[key])
+        if (temp_labels.find(key) != temp_labels.end()) {
+            if (label != temp_labels[key])
                 cout << "Hash collision!" << endl;
         } else
-            preprocessing_labels[key] = label;
+            temp_labels[key] = label;
         preprocessing_label_hash[edge] = key;
+    }
+    int i = 0;
+    unordered_map<size_t, int> id_map;
+    for (auto& [key, label] : temp_labels) {
+        id_map[key] = i;
+        preprocessing_labels[i] = label;
+        ++i;
+    }
+    for (auto& [edge, key] : preprocessing_label_hash) {
+        preprocessing_label_hash[edge] = id_map[key];
     }
 }

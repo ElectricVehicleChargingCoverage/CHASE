@@ -2,7 +2,6 @@
 #include <routingkit/contraction_hierarchy.h>
 #include <routingkit/inverse_vector.h>
 
-#include <arcflags.hpp>
 #include <skarf.hpp>
 #include <boost/filesystem.hpp>
 #include <boost/program_options.hpp>
@@ -339,13 +338,7 @@ int main(int argc, const char* argv[]) {
 
         g.compute_boundary_node(partition);
 
-        // ArcFlags flags(g, partition, partition_size);
-        // string import_file = "../flags/arcflags/" + g.name + "_" + to_string(partition_size);
-        // // flags.mergeFlags("arcflags");
-        // flags.importFlags(import_file + ".csv", import_file + ".bin");
-        // flags.precompute(0, vm["partition"].as<int>());
-
-        Skarf skarf(g, partition, partition_size);
+        Skarf skarf(g, ch, partition, partition_size);
         // skarf.precompute(18,19);
         string import_file_arcflags = "../flags/arcflags/" + g.name + "_" + to_string(partition_size);
         string import_file_skarf = "../flags/skarf/" + g.name + "_" + to_string(partition_size);

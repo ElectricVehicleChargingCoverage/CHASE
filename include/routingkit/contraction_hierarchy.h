@@ -220,8 +220,8 @@ public:
 
 	std::vector<int> partition;
 	int partition_size;
-	std::unordered_map<long long, size_t> edge_hashes[2];
-	std::unordered_map<size_t, boost::dynamic_bitset<>> hash_flags[2];
+	std::vector<size_t> edge_hashes[2];
+	std::vector<boost::dynamic_bitset<>> hash_flags[2];
 
 	enum class InternalState:unsigned{
 		initialized,
