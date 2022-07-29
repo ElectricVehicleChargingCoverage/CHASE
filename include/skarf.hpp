@@ -47,11 +47,8 @@ void Skarf::precompute(int start, int end) {
         vector<unsigned> tentative_dist(g.node_count(), inf_weight);
         vector<bool> down(g.node_count(), false);
         vector<bool> pop(g.node_count(), false);
-        vector<unsigned> pred(g.node_count(), invalid_id);
         vector<long long> ingoing(g.node_count(), numeric_limits<long long>::max());
         vector<unsigned> ingoing_weight(g.node_count(), 0);
-        vector<vector<unsigned>> children(g.node_count());
-        vector<unsigned> reach(g.node_count(), 0);
 
         MinIDQueue queue(g.node_count());
         TimestampFlags was_pushed(g.node_count());
@@ -64,7 +61,7 @@ void Skarf::precompute(int start, int end) {
             pop[v] = true;
             auto distance_to_popped_node = popped.key;
             if (ingoing[v] != numeric_limits<long long>::max()) {
-                children[pred[v]].push_back(v);
+                if (ingoing[v] < 0) cell_maps_skarf[cell_idx][ingoing[v]] = true;
                 cell_maps_arc_flags[cell_idx][ingoing[v]] = true;
             }
             if (v == src || !down[v]) {
@@ -76,7 +73,6 @@ void Skarf::precompute(int start, int end) {
                         if (d < tentative_dist[u]) {
                             ingoing[u] = g.backward_up.original_arc[arc];
                             ingoing_weight[u] = g.backward_up.weight[arc];
-                            pred[u] = v;
                             down[u] = false;
                             queue.decrease_key({u, d});
                             tentative_dist[u] = d;
@@ -84,7 +80,6 @@ void Skarf::precompute(int start, int end) {
                     } else if (d < inf_weight) {
                         ingoing[u] = g.backward_up.original_arc[arc];
                         ingoing_weight[u] = g.backward_up.weight[arc];
-                        pred[u] = v;
                         down[u] = false;
                         was_pushed.set(u);
                         queue.push({u, d});
@@ -100,7 +95,6 @@ void Skarf::precompute(int start, int end) {
                     if (d < tentative_dist[u]) {
                         ingoing[u] = g.backward_down.original_arc[arc];
                         ingoing_weight[u] = g.backward_down.weight[arc];
-                        pred[u] = v;
                         down[u] = true;
                         queue.decrease_key({u, d});
                         tentative_dist[u] = d;
@@ -108,33 +102,10 @@ void Skarf::precompute(int start, int end) {
                 } else if (d < inf_weight) {
                     ingoing[u] = g.backward_down.original_arc[arc];
                     ingoing_weight[u] = g.backward_down.weight[arc];
-                    pred[u] = v;
                     down[u] = true;
                     was_pushed.set(u);
                     tentative_dist[u] = d;
                     queue.push({u, d});
-                }
-            }
-        }
-
-        vector<unsigned> visited(g.node_count(), false);
-        stack<unsigned> s;
-        s.emplace(src);
-
-        while (!s.empty()) {
-            auto v = s.top();
-            if (!visited[v]) {
-                for (unsigned w : children[v])
-                    s.emplace(w);
-                visited[v] = true;
-            } else {
-                s.pop();
-                for (unsigned w : children[v])
-                    reach[v] = max(reach[v], ingoing_weight[w] + reach[w]);
-                // set the flags
-                for (unsigned w : children[v]) {
-                    // see also our skeleton definition for non-geometric-realisations
-                    if (reach[w] + ingoing_weight[w] > tentative_dist[v]) cell_maps_skarf[cell_idx][ingoing[w]] = true;
                 }
             }
         }
@@ -144,11 +115,8 @@ void Skarf::precompute(int start, int end) {
         vector<unsigned> tentative_dist(g.node_count(), inf_weight);
         vector<bool> down(g.node_count(), false);
         vector<bool> pop(g.node_count(), false);
-        vector<unsigned> pred(g.node_count(), invalid_id);
         vector<long long> ingoing(g.node_count(), numeric_limits<long long>::max());
         vector<unsigned> ingoing_weight(g.node_count(), 0);
-        vector<vector<unsigned>> children(g.node_count());
-        vector<unsigned> reach(g.node_count(), 0);
 
         MinIDQueue queue(g.node_count());
         TimestampFlags was_pushed(g.node_count());
@@ -161,7 +129,7 @@ void Skarf::precompute(int start, int end) {
             pop[v] = true;
             auto distance_to_popped_node = popped.key;
             if (ingoing[v] != numeric_limits<long long>::max()) {
-                children[pred[v]].push_back(v);
+                if (ingoing[v] >= 0) cell_maps_skarf[cell_idx + partition_size][ingoing[v]] = true;
                 cell_maps_arc_flags[cell_idx + partition_size][ingoing[v]] = true;
             }
             if (v == src || !down[v]) {
@@ -173,7 +141,6 @@ void Skarf::precompute(int start, int end) {
                         if (d < tentative_dist[u]) {
                             ingoing[u] = g.forward_up.original_arc[arc];
                             ingoing_weight[u] = g.forward_up.weight[arc];
-                            pred[u] = v;
                             down[u] = false;
                             queue.decrease_key({u, d});
                             tentative_dist[u] = d;
@@ -181,7 +148,6 @@ void Skarf::precompute(int start, int end) {
                     } else if (d < inf_weight) {
                         ingoing[u] = g.forward_up.original_arc[arc];
                         ingoing_weight[u] = g.forward_up.weight[arc];
-                        pred[u] = v;
                         down[u] = false;
                         was_pushed.set(u);
                         queue.push({u, d});
@@ -197,7 +163,6 @@ void Skarf::precompute(int start, int end) {
                     if (d < tentative_dist[u]) {
                         ingoing[u] = g.forward_down.original_arc[arc];
                         ingoing_weight[u] = g.forward_down.weight[arc];
-                        pred[u] = v;
                         down[u] = true;
                         queue.decrease_key({u, d});
                         tentative_dist[u] = d;
@@ -205,44 +170,10 @@ void Skarf::precompute(int start, int end) {
                 } else if (d < inf_weight) {
                     ingoing[u] = g.forward_down.original_arc[arc];
                     ingoing_weight[u] = g.forward_down.weight[arc];
-                    pred[u] = v;
                     down[u] = true;
                     was_pushed.set(u);
                     queue.push({u, d});
                     tentative_dist[u] = d;
-                }
-            }
-        }
-
-        vector<unsigned> visited(g.node_count(), false);
-        stack<unsigned> s;
-        s.emplace(src);
-        if(src == 115921){
-            int x = 3;
-        }
-        while (!s.empty()) {
-            auto v = s.top();
-            if (!visited[v]) {
-                for (unsigned w : children[v])
-                    s.emplace(w);
-                visited[v] = true;
-            } else {
-                s.pop();
-                auto l = children[v];
-                if (v == 116136) {
-                    int y = 3;
-                }
-                for (unsigned w : children[v])
-                    reach[v] = max(reach[v], ingoing_weight[w] + reach[w]);
-                // set the flags
-                for (unsigned w : children[v]) {
-                    unsigned s = reach[w];
-                    unsigned s2 = ingoing_weight[w];
-                    unsigned s3 = tentative_dist[v];
-                    if (w == 116164){
-                        int z = 3;
-                    }
-                    if (reach[w] + ingoing_weight[w] > tentative_dist[v]) cell_maps_skarf[cell_idx + partition_size][ingoing[w]] = true;
                 }
             }
         }

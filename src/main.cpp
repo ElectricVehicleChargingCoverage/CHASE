@@ -202,12 +202,23 @@ void start_experiments(int tries, ContractionHierarchy& ch, Graph& g, Contractio
     uniform_int_distribution<> dist(0, g.node_count() - 1);
 
     vector<pair<unsigned, unsigned>> routes(tries);
+    vector<unsigned> edges(tries);
     vector<unsigned> ch_distances(tries);
     vector<unsigned> chase_distances(tries);
+    vector<unsigned> skeleton_chase_distances(tries);
     vector<int64_t> ch_time(tries);
     vector<int64_t> chase_time(tries);
+    vector<int64_t> skeleton_chase_time(tries);
     vector<pair<unsigned, unsigned>> metric_ch(tries);
     vector<pair<unsigned, unsigned>> metric_chase(tries);
+    vector<pair<unsigned, unsigned>> metric_skeleton_chase(tries);
+
+    auto t = std::time(nullptr);
+    auto tm = *std::localtime(&t);
+    std::ostringstream oss;
+    oss << std::put_time(&tm, "%d-%m-%Y %H-%M-%S");
+    auto time = oss.str();
+    ofstream out("../logs/log_" + time + ".txt");
 
     auto f_tail = invert_inverse_vector(ch.forward.first_out);
     auto b_tail = invert_inverse_vector(ch.backward.first_out);
@@ -222,40 +233,53 @@ void start_experiments(int tries, ContractionHierarchy& ch, Graph& g, Contractio
         query.run();
         auto finish = chrono::high_resolution_clock::now();
 
+        edges[i] = query.get_path().size();
         ch_time[i] = chrono::duration_cast<chrono::nanoseconds>(finish - start).count();
         ch_distances[i] = query.get_distance();
         metric_ch[i] = make_pair(query.relaxed, query.visited);
     }
-    auto t = std::time(nullptr);
-    auto tm = *std::localtime(&t);
-    std::ostringstream oss;
-    oss << std::put_time(&tm, "%d-%m-%Y %H-%M-%S");
-    auto time = oss.str();
-    ofstream out("../logs/log_" + time + ".txt");
 
-    int f = 0;
+    int f_chase = 0;
+    int f_skeleton_chase = 0;
     for (int i = 0; i < tries; ++i) {
         auto [x, y] = routes[i];
+
         query.reset().add_source(x).add_target(y);
         auto start = chrono::high_resolution_clock::now();
-        // query.run_chase(min_rank);
-        query.run_skeleton_chase(min_rank);
+        query.run_chase(min_rank);
         auto finish = chrono::high_resolution_clock::now();
 
         chase_time[i] = chrono::duration_cast<chrono::nanoseconds>(finish - start).count();
         chase_distances[i] = query.get_distance();
         metric_chase[i] = make_pair(query.relaxed, query.visited);
 
-        if (chase_distances[i] != ch_distances[i]) f++;
-        cout << "[" << ((chase_distances[i] == ch_distances[i])? "PASS" : "FAIL") << "] " << i + 1 << "/" << tries << endl;
-        out << (chase_distances[i] == ch_distances[i]) << "," << chase_distances[i] << "," << ch_distances[i] << "," << metric_ch[i].first << "," << query.relaxed << "," << metric_ch[i].second << "," << query.visited << "," << ch_time[i] << "," << chase_time[i] << endl;
+        if (chase_distances[i] != ch_distances[i]) f_chase++;
 
-        if (i == 25) {
-            find_shortest_path_backwards(g, g.new_id[ch.rank[x]], g.new_id[ch.rank[y]], 0, skarf, ch);
-            find_shortest_path(g, 115921, g.new_id[ch.rank[y]], 0, skarf);
-        }
+        query.reset().add_source(x).add_target(y);
+        start = chrono::high_resolution_clock::now();
+        query.run_skeleton_chase(min_rank);
+        finish = chrono::high_resolution_clock::now();
+
+        skeleton_chase_time[i] = chrono::duration_cast<chrono::nanoseconds>(finish - start).count();
+        skeleton_chase_distances[i] = query.get_distance();
+        metric_skeleton_chase[i] = make_pair(query.relaxed, query.visited);
+
+        if (skeleton_chase_distances[i] != ch_distances[i]) f_skeleton_chase++;
+
+        bool passed = (chase_distances[i] == ch_distances[i] && skeleton_chase_distances[i] == ch_distances[i]);
+        cout << "[" << (passed? "PASS" : "FAIL") << "] " << i + 1 << "/" << tries << endl;
+        out << passed << "," << ch_distances[i] << "," << chase_distances[i] << "," << skeleton_chase_distances[i] << ",";
+        out << metric_ch[i].first << "," << metric_chase[i].first << "," << metric_skeleton_chase[i].first << ",";
+        out << metric_ch[i].second << "," << metric_chase[i].second << "," << metric_skeleton_chase[i].second << ",";
+        out << ch_time[i] << "," << chase_time[i] << "," << skeleton_chase_time[i] << "," << edges[i] << endl;
+
+        // if (i == 25) {
+        //     find_shortest_path_backwards(g, g.new_id[ch.rank[x]], g.new_id[ch.rank[y]], 0, skarf, ch);
+        //     find_shortest_path(g, 115921, g.new_id[ch.rank[y]], 0, skarf);
+        // }
     }
-    cout << "failed: " << f << endl;
+    cout << "[chase] failed: " << f_chase << endl;
+    cout << "[skeleton-chase] failed: " << f_skeleton_chase << endl;
     out.close();
 }
 
@@ -322,28 +346,28 @@ int main(int argc, const char* argv[]) {
         // flags.precompute(0, vm["partition"].as<int>());
 
         Skarf skarf(g, partition, partition_size);
-        skarf.precompute(18,19);
-        // string import_file_arcflags = "../flags/arcflags/" + g.name + "_" + to_string(partition_size);
-        // string import_file_skarf = "../flags/skarf/" + g.name + "_" + to_string(partition_size);
-        // // skarf.precompute(0, vm["partition"].as<int>());
-        // skarf.importFlags(import_file_arcflags + ".csv", import_file_arcflags + ".bin", IMPORT_TYPE::ARCFLAGS);
-        // skarf.importFlags(import_file_skarf + ".csv", import_file_skarf + ".bin", IMPORT_TYPE::SKARF);
+        // skarf.precompute(18,19);
+        string import_file_arcflags = "../flags/arcflags/" + g.name + "_" + to_string(partition_size);
+        string import_file_skarf = "../flags/skarf/" + g.name + "_" + to_string(partition_size);
+        // skarf.precompute(0, vm["partition"].as<int>());
+        skarf.importFlags(import_file_arcflags + ".csv", import_file_arcflags + ".bin", IMPORT_TYPE::ARCFLAGS);
+        skarf.importFlags(import_file_skarf + ".csv", import_file_skarf + ".bin", IMPORT_TYPE::SKARF);
 
-        // ContractionHierarchyQuery query(ch);
-        // vector<int> parts(ch.node_count(), -1);
-        // for (int i = 0; i < ch.node_count(); ++i) {
-        //     if (g.new_id.find(i) != g.new_id.end()) {
-        //         parts[i] = skarf.partition[g.new_id[i]];
-        //     }
-        // }
-        // query.partition = parts;
-        // query.partition_size = partition_size;
-        // query.edge_hashes[0] = skarf.label_hashes[0];
-        // query.hash_flags[0] = skarf.labels[0];
-        // query.edge_hashes[1] = skarf.label_hashes[1];
-        // query.hash_flags[1] = skarf.labels[1];
+        ContractionHierarchyQuery query(ch);
+        vector<int> parts(ch.node_count(), -1);
+        for (int i = 0; i < ch.node_count(); ++i) {
+            if (g.new_id.find(i) != g.new_id.end()) {
+                parts[i] = skarf.partition[g.new_id[i]];
+            }
+        }
+        query.partition = parts;
+        query.partition_size = partition_size;
+        query.edge_hashes[0] = skarf.label_hashes[0];
+        query.hash_flags[0] = skarf.labels[0];
+        query.edge_hashes[1] = skarf.label_hashes[1];
+        query.hash_flags[1] = skarf.labels[1];
         
-        // start_experiments(vm["tries"].as<int>(), ch, g, query, min_rank, skarf);
+        start_experiments(vm["tries"].as<int>(), ch, g, query, min_rank, skarf);
     } catch (const exception& ex) {
         cerr << ex.what() << endl;
     }
