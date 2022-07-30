@@ -254,10 +254,17 @@ void start_experiments(int tries, ContractionHierarchy& ch, Graph& g, Contractio
 
         if (chase_distances[i] != ch_distances[i]) f_chase++;
 
+        bool passed = (chase_distances[i] == ch_distances[i]);
+        cout << "CHASE [" << (passed? "PASS" : "FAIL") << "] " << i + 1 << "/" << tries << endl;
+    }
+
+    for (int i = 0; i < tries; ++i) {
+        auto [x, y] = routes[i];
+
         query.reset().add_source(x).add_target(y);
-        start = chrono::high_resolution_clock::now();
+        auto start = chrono::high_resolution_clock::now();
         query.run_skeleton_chase(min_rank);
-        finish = chrono::high_resolution_clock::now();
+        auto finish = chrono::high_resolution_clock::now();
 
         skeleton_chase_time[i] = chrono::duration_cast<chrono::nanoseconds>(finish - start).count();
         skeleton_chase_distances[i] = query.get_distance();
@@ -265,18 +272,17 @@ void start_experiments(int tries, ContractionHierarchy& ch, Graph& g, Contractio
 
         if (skeleton_chase_distances[i] != ch_distances[i]) f_skeleton_chase++;
 
-        bool passed = (chase_distances[i] == ch_distances[i] && skeleton_chase_distances[i] == ch_distances[i]);
-        cout << "[" << (passed? "PASS" : "FAIL") << "] " << i + 1 << "/" << tries << endl;
+        bool passed = (skeleton_chase_distances[i] == ch_distances[i]);
+        cout << "Skeleton-CHASE [" << (passed? "PASS" : "FAIL") << "] " << i + 1 << "/" << tries << endl;
+    }
+    for (int i = 0; i < tries; ++i) {
+        bool passed = (skeleton_chase_distances[i] == ch_distances[i] && chase_distances[i] == ch_distances[i]);
         out << passed << "," << ch_distances[i] << "," << chase_distances[i] << "," << skeleton_chase_distances[i] << ",";
         out << metric_ch[i].first << "," << metric_chase[i].first << "," << metric_skeleton_chase[i].first << ",";
         out << metric_ch[i].second << "," << metric_chase[i].second << "," << metric_skeleton_chase[i].second << ",";
         out << ch_time[i] << "," << chase_time[i] << "," << skeleton_chase_time[i] << "," << edges[i] << endl;
-
-        // if (i == 25) {
-        //     find_shortest_path_backwards(g, g.new_id[ch.rank[x]], g.new_id[ch.rank[y]], 0, skarf, ch);
-        //     find_shortest_path(g, 115921, g.new_id[ch.rank[y]], 0, skarf);
-        // }
     }
+
     cout << "[chase] failed: " << f_chase << endl;
     cout << "[skeleton-chase] failed: " << f_skeleton_chase << endl;
     out.close();
