@@ -2,7 +2,8 @@
 
 #include <bits/stdc++.h>
 #include <routingkit/contraction_hierarchy.h>
-#include <scotch.h>
+// #include <scotch.h>
+#include <metis.h>
 
 #include "stringutil.hpp"
 
@@ -293,8 +294,8 @@ void build_up_down_cores(Graph& g) {
 vector<int> partition_graph(Graph& g, int nparts, float best_percentage) {
     int n = g.node_count();
 
-    vector<SCOTCH_Num> xadj;
-    vector<SCOTCH_Num> adjncy;
+    vector<int> xadj;
+    vector<int> adjncy;
     for (int x = 0; x < g.node_count(); ++x) {
         xadj.push_back(adjncy.size());
         vector<bool> is_set(g.node_count(), false);
@@ -314,25 +315,34 @@ vector<int> partition_graph(Graph& g, int nparts, float best_percentage) {
     }
     xadj.push_back(adjncy.size());
 
-    SCOTCH_Graph grafdat;
-    SCOTCH_Strat stradat;
-    SCOTCH_Num baseval;
-    SCOTCH_Num vertnbr;
-    int o;
+    int options[METIS_NOPTIONS];
+    METIS_SetDefaultOptions(options);
+    options[METIS_OPTION_NUMBERING] = 0;
 
-    SCOTCH_graphInit(&grafdat);
-    baseval = 0;
-    vertnbr = n;
-    o = 1;
-    vector<SCOTCH_Num> part(n);
-    if (SCOTCH_graphBuild(&grafdat, baseval, vertnbr, &(xadj[0]), &(xadj[1]), NULL, NULL, adjncy.size(), &(adjncy[0]), NULL) == 0) {
-        SCOTCH_stratInit(&stradat);
-        if (SCOTCH_graphCheck(&grafdat) == 0) {
-            o = SCOTCH_graphPart(&grafdat, nparts, &stradat, &(part[0]));
-        }
-        SCOTCH_stratExit(&stradat);
-    }
-    SCOTCH_graphExit(&grafdat);
+    int ncon = 1, edgecut = 0;
+    vector<int> part(n);
+    METIS_PartGraphRecursive(&n, &ncon, &(xadj[0]), &(adjncy[0]), NULL, NULL, NULL, &nparts, NULL, NULL, options, &edgecut, &(part[0]));
+
+    // SCOTCH_Graph grafdat;
+    // SCOTCH_Strat stradat;
+    // SCOTCH_Num baseval;
+    // SCOTCH_Num vertnbr;
+    // int o;
+
+    // SCOTCH_graphInit(&grafdat);
+    // baseval = 0;
+    // vertnbr = n;
+    // o = 1;
+    // if (SCOTCH_graphBuild(&grafdat, baseval, vertnbr, &(xadj[0]), &(xadj[1]), NULL, NULL, adjncy.size(), &(adjncy[0]), NULL) == 0) {
+    //     SCOTCH_stratInit(&stradat);
+    //     if (SCOTCH_graphCheck(&grafdat) == 0) {
+    //         o = SCOTCH_graphPart(&grafdat, nparts, &stradat, &(part[0]));
+    //     }
+    //     SCOTCH_stratExit(&stradat);
+    // }
+    // SCOTCH_graphExit(&grafdat);
+
+
     vector<int> partition(n);
     for (int i = 0; i < n; ++i) partition[i] = part[i];
     return partition;

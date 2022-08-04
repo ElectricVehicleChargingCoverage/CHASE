@@ -348,25 +348,31 @@ int main(int argc, const char* argv[]) {
         // skarf.precompute(18,19);
         string import_file_arcflags = "../flags/arcflags/" + g.name + "_" + to_string(partition_size);
         string import_file_skarf = "../flags/skarf/" + g.name + "_" + to_string(partition_size);
-        // skarf.precompute(0, vm["partition"].as<int>());
-        skarf.importFlags(import_file_arcflags + ".csv", import_file_arcflags + ".bin", IMPORT_TYPE::ARCFLAGS);
-        skarf.importFlags(import_file_skarf + ".csv", import_file_skarf + ".bin", IMPORT_TYPE::SKARF);
 
-        ContractionHierarchyQuery query(ch);
-        vector<int> parts(ch.node_count(), -1);
-        for (int i = 0; i < ch.node_count(); ++i) {
-            if (g.new_id.find(i) != g.new_id.end()) {
-                parts[i] = skarf.partition[g.new_id[i]];
-            }
-        }
-        query.partition = parts;
-        query.partition_size = partition_size;
-        query.edge_hashes[0] = skarf.label_hashes[0];
-        query.hash_flags[0] = skarf.labels[0];
-        query.edge_hashes[1] = skarf.label_hashes[1];
-        query.hash_flags[1] = skarf.labels[1];
+        auto start = chrono::high_resolution_clock::now();
+        skarf.precompute(0, vm["partition"].as<int>());
+        auto finish = chrono::high_resolution_clock::now();
+
+        auto time = chrono::duration_cast<chrono::minutes>(finish - start).count();
+        cout << "flag computation took: " << time << "minutes" << endl;
+        // skarf.importFlags(import_file_arcflags + ".csv", import_file_arcflags + ".bin", IMPORT_TYPE::ARCFLAGS);
+        // skarf.importFlags(import_file_skarf + ".csv", import_file_skarf + ".bin", IMPORT_TYPE::SKARF);
+
+        // ContractionHierarchyQuery query(ch);
+        // vector<int> parts(ch.node_count(), -1);
+        // for (int i = 0; i < ch.node_count(); ++i) {
+        //     if (g.new_id.find(i) != g.new_id.end()) {
+        //         parts[i] = skarf.partition[g.new_id[i]];
+        //     }
+        // }
+        // query.partition = parts;
+        // query.partition_size = partition_size;
+        // query.edge_hashes[0] = skarf.label_hashes[0];
+        // query.hash_flags[0] = skarf.labels[0];
+        // query.edge_hashes[1] = skarf.label_hashes[1];
+        // query.hash_flags[1] = skarf.labels[1];
         
-        start_experiments(vm["tries"].as<int>(), ch, g, query, min_rank, skarf);
+        // start_experiments(vm["tries"].as<int>(), ch, g, query, min_rank, skarf);
     } catch (const exception& ex) {
         cerr << ex.what() << endl;
     }
