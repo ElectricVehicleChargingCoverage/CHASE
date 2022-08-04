@@ -12,7 +12,7 @@ file(GLOB SOURCES "src/*.cpp")
 add_executable(CHASE ${SOURCES})
 set(CMAKE_FIND_LIBRARY_SUFFIXES ".a")
 set(BUILD_SHARED_LIBS OFF)
-# set(CMAKE_EXE_LINKER_FLAGS "-static")
+set(CMAKE_EXE_LINKER_FLAGS "-static")
 target_link_directories(CHASE PUBLIC lib)
 # link library needed for the vertex parsing
 target_link_libraries(CHASE pthread)
